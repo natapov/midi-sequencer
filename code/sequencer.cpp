@@ -172,7 +172,11 @@ inline ImVec4 lerp(ImVec4 a, ImVec4 b, float t){
 int row_to_note(int n){
 	return 11 - ((n + 11 - HIGHEST_NOTE) % 12);
 }
-	
+
+inline int snap(int x){
+	return (x - x % grid_note_length);
+}
+
 void zero_array(char arr[CELL_GRID_NUM_H][CELL_GRID_NUM_W]){
 	for (int y = 0; y < CELL_GRID_NUM_H; y++)
 		for (int x = 0; x < CELL_GRID_NUM_W; x++)
@@ -199,7 +203,7 @@ int resize(int y, int old_x, int cur_x){
 	bool is_end = cell[y][old_x] & (state_end);
 
 	if(snap_to_grid){
-		cur_x += grid_note_length - cur_x % grid_note_length;
+		cur_x = snap(cur_x) + grid_note_length;
 		if(is_end) cur_x -=1;
 	}
 	for(i = old_x - 1; i >= cur_x; i--){
@@ -236,7 +240,7 @@ int resize(int y, int old_x, int cur_x){
 }
 
 bool place_note(int y, int x, int note_length){
-	for(int i = 1; i < note_length; i++){
+	for(int i = 0; i < note_length; i++){
 		if(cell[y][x+i] != state_empty) return false;
 	}		
 	if(!drawn_notes[row_to_note(y)])
@@ -294,10 +298,9 @@ void update_grid(){
 		}
 		last_played_grid_col = current;
 	}
-	ImVec2 mouse_pos = GetMousePos();
+	
 	SetNextWindowPos(ImVec2(SIDE_BAR,TOP_BAR));
 	SetNextWindowSize(ImVec2(WINDOW_W - SIDE_BAR, WINDOW_H));
-
 	Begin("note grid overlay", NULL, INVISIBLE_WINDOW_FLAGS);
 	if(IsWindowHovered()){
 		// just make these global todo
@@ -310,56 +313,76 @@ void update_grid(){
 			grid_note_length = (CELLS_PER_BEAT*4) >> note_length_idx;
 		}
 		
+		//get grid co-ordinate
+		ImVec2 mouse_pos = GetMousePos();
 		int y = (mouse_pos.y - TOP_BAR)  / CELL_SIZE_H;
 		int x = (mouse_pos.x - SIDE_BAR) / CELL_SIZE_W;
 		static bool resizing_note = false;
-		static int  start_x;
-		static int  start_y;
+		static int  last_x;
+		static int  last_y;
 		static bool moving_note = false;
 		static int cells_to_left;
-		static int cells_to_right;
+		static int total_length;
 		//reset mouse cursor / state
 		if(!IsMouseDown(0)){
 			resizing_note = false;
 			moving_note = false;
 		}
 		
-		if((cell[y][x] == (state_middle)) && !moving_note){
+		if((cell[y][x] == (state_middle)) && !moving_note && !resizing_note){
 			if(IsMouseDown(0)){
+				last_x = x;
+				last_y = y;
 				moving_note = true;
 				cells_to_left = 0;
-				cells_to_right =0;
+				
 				int cur_x = x;
 				while(cell[y][cur_x] != state_start){
 					cur_x--;
 					cells_to_left++;
 				}
 				cur_x = x;
+				total_length = cells_to_left + 1;
 				while(cell[y][cur_x] != state_end){
 					cur_x++;
-					cells_to_right++;
+					total_length++;
 				}
 			}
 		}
 		//set mouse dragging/resizing state
-		else if((cell[y][x] & (state_end|state_start)) && !resizing_note){
+		else if((cell[y][x] & (state_end|state_start)) && !resizing_note && !moving_note){
 			SetMouseCursor(ImGuiMouseCursor_ResizeEW);
 			if(IsMouseDown(0)){
 				resizing_note = true;
-				start_x = x;
-				start_y = y;
+				last_x = x;
+				last_y = y;
 			}
 		}
 		
-		if(moving_note){
-			//move(start_y, start_x, y, x);
-		}
+		if(moving_note && (last_x != x || last_y != y)){
+			int note_start_x = snap_to_grid ? snap(x) : x - cells_to_left;
+			
+			//we do nothing if the note hasn't actually moved
+			if(!snap_to_grid || note_start_x != last_x - cells_to_left){
+				// we erase the note first so it consider itself when checking for space
+				erase_note(last_y, last_x);
+				if(place_note(y, note_start_x, total_length)){
+					last_x = x;
+					last_y = y;
+				}
 
-//		void move(int& start_y, int& start_x, int y, int x, int cells_to_left, int cells_to_right){
+				else{
+					//undo note ease
+					auto res = place_note(last_y, last_x - cells_to_left, total_length);
+					printf("%d, %d\n",last_y, last_x - cells_to_left);
+					assert(res);
+				}
+			}
+		}
 
 		else if(resizing_note){
 			SetMouseCursor(ImGuiMouseCursor_ResizeEW);
-			start_x = resize(start_y, start_x, x);
+			last_x = resize(last_y, last_x, x);
 		}
 
 		//erase when right mouse button is pressed
@@ -369,8 +392,8 @@ void update_grid(){
 
 		//place note
 		else if(IsMouseDown(0) && !cell[y][x] && !IsMouseDown(1)) {
-			int start_x = snap_to_grid ? (x - x % grid_note_length) : x;
-			if(place_note(y, start_x, grid_note_length))
+			int last_x = snap_to_grid ? snap(x) : x;
+			if(place_note(y, last_x, grid_note_length))
 				 engine->play2D(snd_src[y]);
 		}
 	}
