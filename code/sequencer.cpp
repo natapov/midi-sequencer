@@ -11,10 +11,6 @@
 using namespace ImGui;
 using namespace irrklang;
 
-// todo hide uncertain notes when scale is selected in predict mode
-// todo add clear selection button
-// todo don't limit base notes in non-predict mode
-
 enum : char{
 	state_empty  = 0,
 	state_start  = 1,
@@ -43,7 +39,6 @@ const short SCALE_MASK = 0xfff;
 // CONFIG
 // these are mostly sizes of diffrent ui elements as well some default values for glabal variables
 // todo: dpi scaling
-// todo: large scales don't exact match
 
 const int CELLS_PER_BEAT = 8;//this is the minimun note size a beat is typically 1/4 so if CELLS_PER_BEAT = 8 the minimum note is 1/32
 
@@ -111,8 +106,10 @@ int drawn_notes[12]; //The number of notes of each type currently on the grid
 int number_of_drawn_notes = 0;
 int note_histogram[12]; //Sum total of each note in all the matching scales
 int matching_scales_count_total = 0;
-int matching_scales_count[12];
+//int matching_scales_count[12];
 char cell[CELL_GRID_NUM_H][CELL_GRID_NUM_W]; //here we store the currently drawn notes on the grid
+bool need_prediction_update = true;
+
 
 // User-modifiable variables:
 int bpm = 180; //beats per minute
@@ -154,7 +151,7 @@ inline bool scale_contains(short container, short contained){
 }
 
 short scale_rotate(short s, Note base){
-	short looped_bits = SCALE_MASK & s <<base;
+	short looped_bits = SCALE_MASK & (s << base);
 	s = (s>>(12-base));
 	return s|looped_bits;
 }
@@ -200,9 +197,13 @@ void reset(){
 	last_played_grid_col = 0;
 }
 
-void clear_selection(){
+inline void clear_selection(){
 	selected_scale_idx = -1;
 	selected_base_note = -1;
+}
+
+inline bool is_scale_selected(){
+	return selected_scale_idx != -1 && selected_base_note != -1;
 }
 int resize(int y, int old_x, int cur_x){
 	assert(cell[y][old_x] & (state_end|state_start));
@@ -294,7 +295,32 @@ void erase_note(int y, int x){
 	}
 	cell[y][x] = state_empty;
 }
+void make_scale_prediction(){
+	short current_notes = notes_array_to_scale(drawn_notes);
+	for(auto& it : note_histogram) it = 0;
+	matching_scales_count_total = 0;
+	for(int j = 0; j < 12; j++){
+		short note_mask = j ? 1 << (12 - j) : 1;
+		for(int i = 0; i < NUM_SCALES; i++){
+			if(scale_contains(scale[i].notes, current_notes)){
+				scale[i].is_matching |= note_mask;
 
+				//note histogram is limited to selected note
+				if(selected_base_note == -1 || selected_base_note == j){
+					matching_scales_count_total += 1;
+					for(int k = 0; k < 12; k++)
+						if(scale_has_note(scale[i].notes, k))
+							note_histogram[(12 + k - j) % 12] += 1;
+				}
+			}
+			else{
+				scale[i].is_matching &= (0xfff - note_mask);
+			}
+
+		}
+		current_notes = scale_rotate(current_notes, 1);		
+	}
+}
 void update_grid(){
 	if(playing){
 		int current = (playhead_offset / CELL_SIZE_W) % CELL_GRID_NUM_W;
@@ -377,6 +403,7 @@ void update_grid(){
 				if(place_note(y, note_start_x, total_length)){
 					last_x = x;
 					last_y = y;
+					need_prediction_update = true;
 				}
 				else{
 					//undo note ease
@@ -395,13 +422,17 @@ void update_grid(){
 		//erase when right mouse button is pressed
 		else if(IsMouseDown(1) && cell[y][x]){
 			erase_note(y,x);
+			need_prediction_update = true;
 		}
 
 		//place note
 		else if(IsMouseDown(0) && !cell[y][x] && !IsMouseDown(1)) {
 			int last_x = snap_to_grid ? snap(x) : x;
-			if(place_note(y, last_x, grid_note_length) && !playing)
-				 engine->play2D(snd_src[y]);
+			if(place_note(y, last_x, grid_note_length)){
+				need_prediction_update = true;
+				if(!playing)
+					engine->play2D(snd_src[y]);
+			}
 		}
 	}
 	End();
@@ -420,10 +451,7 @@ void draw_one_frame(){
 			if(BeginMenu("Settings")){
 				if(MenuItem("Predict Mode", NULL, predict_mode)){
 					predict_mode = !predict_mode;
-					selected_scale_idx = -1; //todo: why is this here?
-					if(selected_base_note == -1){
-						//selected_base_note = Do;
-					}
+					if(predict_mode) clear_selection(); //selected scale might not match notes
 				}
 				if(MenuItem("Snap to grid", NULL, snap_to_grid)){
 					snap_to_grid = !snap_to_grid;
@@ -463,7 +491,7 @@ void draw_one_frame(){
 			for(int n = 0; n < 12; n++){
 				short note_mask = 1<<n;
 				const bool is_selected = (selected_base_note == n);
-				if(selected_scale_idx == -1 || (scale[selected_scale_idx].is_matching & note_mask)){
+				if(!predict_mode || selected_scale_idx == -1 || (scale[selected_scale_idx].is_matching & note_mask)){
 					if(Selectable(note_names[n], is_selected))
 						selected_base_note = n;
 				}
@@ -478,33 +506,20 @@ void draw_one_frame(){
 			scale_preview_value = scale[selected_scale_idx].name;
 		}
 		else if(predict_mode){
-			int possible_scales;
-			if(selected_base_note == -1)
-				possible_scales = matching_scales_count_total;
-			else
-				possible_scales = matching_scales_count[selected_base_note];
-			sprintf(buff, "%d Possible scales", possible_scales);
+			sprintf(buff, "%d Possible scales", matching_scales_count_total);
 			scale_preview_value = buff;
 		}
 		else{
 			scale_preview_value = "Select scale";
 		}
 
-		//todo extract calculatin of scales
 		SetNextItemWidth(SCALE_BOX_WIDTH);
 		if(BeginCombo("Scale", scale_preview_value, 0)){
 			for(int n = 0; n < NUM_SCALES; n++){
 				const bool is_selected = (selected_scale_idx == n);
-				//we just don't draw scales that don't match
 				bool scale_matches;
 				if(predict_mode){
-					if(selected_base_note == -1){
-						scale_matches = scale[n].is_matching;
-					}
-					else{
-						scale_matches = (scale[n].is_matching & 1<<selected_base_note);
-					}
-					if(scale_matches){
+					if(scale[n].is_matching){
 						if(scale[n].number_of_notes == number_of_drawn_notes){
 							sprintf(buff, "%s [Exact match]", scale[n].name);
 							if(Selectable(buff, is_selected))
@@ -518,6 +533,10 @@ void draw_one_frame(){
 					selected_scale_idx = n;
 			}
 			EndCombo();
+		}
+		SameLine();
+		if(Button("Clear Selection")){
+			clear_selection();
 		}
 
 		//SECOND LINE
@@ -560,7 +579,7 @@ void draw_one_frame(){
 			
 			ImVec4 color;
 			//draw grid background
-			if(predict_mode){
+			if(predict_mode && !is_scale_selected()){
 				if(number_of_drawn_notes){
 					float density = (float) note_histogram[note] / ((float) matching_scales_count_total);
 					color = lerp(ColorConvertU32ToFloat4(BLACK_COL), ColorConvertU32ToFloat4(GRID_BG_COL), density);
@@ -687,30 +706,9 @@ int main(){
 		if(elapsed >= max_time)  elapsed -= max_time;
 		playhead_offset = time_to_pixels(elapsed);
 
-		for(auto& it : note_histogram) it = 0;
-		for(auto& it : matching_scales_count) it = 0;
-		matching_scales_count_total = 0;
-
-		short current_notes = notes_array_to_scale(drawn_notes);
-		if(predict_mode){
-			for(int j = 0; j < 12; j++){
-				short note_mask = 1<<j;
-				//if(there_is_note_selected && it's not this note) continue;
-				for(int i = 0; i < NUM_SCALES; i++){
-					if(scale_contains(scale[i].notes, current_notes)){
-						matching_scales_count_total += 1;
-						scale[i].is_matching |= note_mask;
-						matching_scales_count[j] +=1;
-						for(int k = 0; k < 12; k++)
-							if(scale_has_note(scale[i].notes, k))
-								note_histogram[(12 + k - j) % 12] += 1;
-					}
-					else{
-						scale[i].is_matching &= (0xfff - note_mask);
-					}
-				}
-				current_notes = scale_rotate(current_notes, 1);		
-			}
+		if(predict_mode && need_prediction_update){
+			make_scale_prediction();
+			need_prediction_update = false;
 		}
 		draw_one_frame();
 		update_grid();
