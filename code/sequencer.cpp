@@ -10,7 +10,11 @@
 
 using namespace ImGui;
 using namespace irrklang;
-//todo: switch out of predict mode when selecting scale, auto select base note
+
+// todo hide uncertain notes when scale is selected in predict mode
+// todo add clear selection button
+// todo don't limit base notes in non-predict mode
+
 enum : char{
 	state_empty  = 0,
 	state_start  = 1,
@@ -84,7 +88,6 @@ const char* english_note_names[12] = {"C",  "C#",  "D",  "D#",  "E",  "F",  "F#"
 const int HIGHEST_NOTE = So_; 
 const int HIGHEST_NOTE_OCTAVE = 5;
 
-
 // GLOBAL VARIABLES 
 
 ImGuiID grid_id;
@@ -107,7 +110,8 @@ int playhead_offset = 0; //The playhead is the line that moves when we press pla
 int drawn_notes[12]; //The number of notes of each type currently on the grid
 int number_of_drawn_notes = 0;
 int note_histogram[12]; //Sum total of each note in all the matching scales
-int matching_scales_count = 0;
+int matching_scales_count_total = 0;
+int matching_scales_count[12];
 char cell[CELL_GRID_NUM_H][CELL_GRID_NUM_W]; //here we store the currently drawn notes on the grid
 
 // User-modifiable variables:
@@ -125,7 +129,7 @@ bool debug_window = false;
 const char** note_names = english_notes ? english_note_names : regular_note_names;
 
 //selector variables
-Note selected_base_note = Do; 
+Note selected_base_note = -1; 
 int selected_scale_idx = -1;
 
 // FUNCIONS
@@ -196,6 +200,10 @@ void reset(){
 	last_played_grid_col = 0;
 }
 
+void clear_selection(){
+	selected_scale_idx = -1;
+	selected_base_note = -1;
+}
 int resize(int y, int old_x, int cur_x){
 	assert(cell[y][old_x] & (state_end|state_start));
 	if(cur_x == old_x) return old_x;
@@ -303,7 +311,6 @@ void update_grid(){
 	SetNextWindowSize(ImVec2(WINDOW_W - SIDE_BAR, WINDOW_H));
 	Begin("note grid overlay", NULL, INVISIBLE_WINDOW_FLAGS);
 	if(IsWindowHovered()){
-		// just make these global todo
 		ImGuiIO& io = GetIO();
 		
 		if(io.MouseWheel){
@@ -317,12 +324,14 @@ void update_grid(){
 		ImVec2 mouse_pos = GetMousePos();
 		int y = (mouse_pos.y - TOP_BAR)  / CELL_SIZE_H;
 		int x = (mouse_pos.x - SIDE_BAR) / CELL_SIZE_W;
+		
 		static bool resizing_note = false;
 		static int  last_x;
 		static int  last_y;
 		static bool moving_note = false;
 		static int cells_to_left;
 		static int total_length;
+		
 		//reset mouse cursor / state
 		if(!IsMouseDown(0)){
 			resizing_note = false;
@@ -358,19 +367,17 @@ void update_grid(){
 				last_y = y;
 			}
 		}
-		
+
 		if(moving_note && (last_x != x || last_y != y)){
 			int note_start_x = snap_to_grid ? snap(x) : x - cells_to_left;
-			
 			//we do nothing if the note hasn't actually moved
-			if(!snap_to_grid || note_start_x != last_x - cells_to_left){
+			if(!snap_to_grid || note_start_x != last_x - cells_to_left || last_y != y){
 				// we erase the note first so it consider itself when checking for space
 				erase_note(last_y, last_x);
 				if(place_note(y, note_start_x, total_length)){
 					last_x = x;
 					last_y = y;
 				}
-
 				else{
 					//undo note ease
 					auto res = place_note(last_y, last_x - cells_to_left, total_length);
@@ -393,7 +400,7 @@ void update_grid(){
 		//place note
 		else if(IsMouseDown(0) && !cell[y][x] && !IsMouseDown(1)) {
 			int last_x = snap_to_grid ? snap(x) : x;
-			if(place_note(y, last_x, grid_note_length))
+			if(place_note(y, last_x, grid_note_length) && !playing)
 				 engine->play2D(snd_src[y]);
 		}
 	}
@@ -413,7 +420,10 @@ void draw_one_frame(){
 			if(BeginMenu("Settings")){
 				if(MenuItem("Predict Mode", NULL, predict_mode)){
 					predict_mode = !predict_mode;
-					selected_scale_idx = -1;
+					selected_scale_idx = -1; //todo: why is this here?
+					if(selected_base_note == -1){
+						//selected_base_note = Do;
+					}
 				}
 				if(MenuItem("Snap to grid", NULL, snap_to_grid)){
 					snap_to_grid = !snap_to_grid;
@@ -442,46 +452,70 @@ void draw_one_frame(){
 			reset();
 		}
 		SameLine();
-		const char* note_preview_value = note_names[selected_base_note];  // Pass in the preview value visible before opening the combo (it could be anything)
+		const char* note_preview_value;
+
+		if(selected_base_note != -1)
+			note_preview_value = note_names[selected_base_note];
+		else note_preview_value = "---";
+
 		SetNextItemWidth(BASE_BOX_WIDTH);
 		if(BeginCombo("Base Note", note_preview_value, 0)){
 			for(int n = 0; n < 12; n++){
+				short note_mask = 1<<n;
 				const bool is_selected = (selected_base_note == n);
-				if(Selectable(note_names[n], is_selected))
-					selected_base_note = n;
+				if(selected_scale_idx == -1 || (scale[selected_scale_idx].is_matching & note_mask)){
+					if(Selectable(note_names[n], is_selected))
+						selected_base_note = n;
+				}
 			}
 			EndCombo();
 		}
 		SameLine();
 
 		const char* scale_preview_value;
-		if(predict_mode){
-			sprintf(buff, "%d Possible scales", matching_scales_count);
+		
+		if(selected_scale_idx != -1){
+			scale_preview_value = scale[selected_scale_idx].name;
+		}
+		else if(predict_mode){
+			int possible_scales;
+			if(selected_base_note == -1)
+				possible_scales = matching_scales_count_total;
+			else
+				possible_scales = matching_scales_count[selected_base_note];
+			sprintf(buff, "%d Possible scales", possible_scales);
 			scale_preview_value = buff;
 		}
 		else{
-			if(selected_scale_idx != -1){
-				scale_preview_value = scale[selected_scale_idx].name;
-			}
-			else{
-				scale_preview_value = "Select scale";
-			}
+			scale_preview_value = "Select scale";
 		}
-		//if(scale_set) = scale[selected_scale_idx].name;
+
+		//todo extract calculatin of scales
 		SetNextItemWidth(SCALE_BOX_WIDTH);
 		if(BeginCombo("Scale", scale_preview_value, 0)){
 			for(int n = 0; n < NUM_SCALES; n++){
 				const bool is_selected = (selected_scale_idx == n);
 				//we just don't draw scales that don't match
-				if(!predict_mode || scale[n].is_matching){
-					if(predict_mode && scale[n].number_of_notes == number_of_drawn_notes){
-						sprintf(buff, "%s [Exact match!]", scale[n].name);
-						if(Selectable(buff, is_selected))
+				bool scale_matches;
+				if(predict_mode){
+					if(selected_base_note == -1){
+						scale_matches = scale[n].is_matching;
+					}
+					else{
+						scale_matches = (scale[n].is_matching & 1<<selected_base_note);
+					}
+					if(scale_matches){
+						if(scale[n].number_of_notes == number_of_drawn_notes){
+							sprintf(buff, "%s [Exact match]", scale[n].name);
+							if(Selectable(buff, is_selected))
+								selected_scale_idx = n;
+						}
+						else if(Selectable(scale[n].name, is_selected)) 
 							selected_scale_idx = n;
 					}
-					else if(Selectable(scale[n].name, is_selected)) 
-						selected_scale_idx = n;
 				}
+				else if(Selectable(scale[n].name, is_selected)) 
+					selected_scale_idx = n;
 			}
 			EndCombo();
 		}
@@ -528,7 +562,7 @@ void draw_one_frame(){
 			//draw grid background
 			if(predict_mode){
 				if(number_of_drawn_notes){
-					float density = (float) note_histogram[note] / ((float) matching_scales_count);
+					float density = (float) note_histogram[note] / ((float) matching_scales_count_total);
 					color = lerp(ColorConvertU32ToFloat4(BLACK_COL), ColorConvertU32ToFloat4(GRID_BG_COL), density);
 					draw_list->AddRectFilled(ImVec2(SIDE_BAR, TOP_BAR + CELL_SIZE_H*i), ImVec2(SIDE_BAR + GRID_W, TOP_BAR + CELL_SIZE_H*(i+1) - 1), ColorConvertFloat4ToU32(color));
 				}
@@ -654,7 +688,8 @@ int main(){
 		playhead_offset = time_to_pixels(elapsed);
 
 		for(auto& it : note_histogram) it = 0;
-		matching_scales_count = 0;
+		for(auto& it : matching_scales_count) it = 0;
+		matching_scales_count_total = 0;
 
 		short current_notes = notes_array_to_scale(drawn_notes);
 		if(predict_mode){
@@ -663,8 +698,9 @@ int main(){
 				//if(there_is_note_selected && it's not this note) continue;
 				for(int i = 0; i < NUM_SCALES; i++){
 					if(scale_contains(scale[i].notes, current_notes)){
-						matching_scales_count += 1;
+						matching_scales_count_total += 1;
 						scale[i].is_matching |= note_mask;
+						matching_scales_count[j] +=1;
 						for(int k = 0; k < 12; k++)
 							if(scale_has_note(scale[i].notes, k))
 								note_histogram[(12 + k - j) % 12] += 1;
@@ -687,12 +723,6 @@ int main(){
 			sprintf(buff, "Elapsed time: %f", elapsed);
 			Text(buff);
 			sprintf(buff, "Current time: %f", current);
-			Text(buff);
-			sprintf(buff,"Notes: %d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d", drawn_notes[11], drawn_notes[10], drawn_notes[9], drawn_notes[8], drawn_notes[7], drawn_notes[6], drawn_notes[5], drawn_notes[4], drawn_notes[3], drawn_notes[2], drawn_notes[1], drawn_notes[0]);
-			Text(buff);
-			sprintf(buff,"Note histogram: %d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d", note_histogram[11], note_histogram[10], note_histogram[9], note_histogram[8], note_histogram[7], note_histogram[6], note_histogram[5], note_histogram[4], note_histogram[3], note_histogram[2], note_histogram[1], note_histogram[0]);
-			Text(buff);
-			sprintf(buff,"Number of drawn notes: %d", number_of_drawn_notes);
 			Text(buff);
 			End();
 		}
