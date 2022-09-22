@@ -11,6 +11,8 @@
 using namespace ImGui;
 using namespace irrklang;
 
+//todo moving note off screen
+//todo hold shift to toggle snap to grid
 enum : char{
 	state_empty  = 0,
 	state_start  = 1,
@@ -18,7 +20,6 @@ enum : char{
 	state_end    = 4,
 };
 
-//todo: resizing notes bugs
 typedef int Note;
 enum {
 	Si  = 11,
@@ -38,13 +39,11 @@ enum {
 const short SCALE_MASK = 0xfff;
 
 // CONFIG
-// these are mostly sizes of diffrent ui elements as well some default values for glabal variables
-// todo: dpi scaling
-
+// these are mostly sizes of diffrent ui elements 
 const int CELLS_PER_BEAT = 8;//this is the minimun note size a beat is typically 1/4 so if CELLS_PER_BEAT = 8 the minimum note is 1/32
 
 const int CELL_GRID_NUM_H = 35;
-const int CELL_GRID_NUM_W = 40*CELLS_PER_BEAT;
+const int CELL_GRID_NUM_W = 40 * CELLS_PER_BEAT;
 
 const int CELL_SIZE_W = 4;
 const int CELL_SIZE_H = 20;
@@ -250,8 +249,10 @@ int resize(int y, int old_x, int cur_x){
 }
 
 bool place_note(int y, int x, int note_length){
+	if(x<0) return false;
 	for(int i = 0; i < note_length; i++){
-		if(cell[y][x+i] != state_empty) return false;
+		if(x+i >= CELL_GRID_NUM_W || cell[y][x+i] != state_empty)
+			return false;
 	}		
 	if(!drawn_notes[row_to_note(y)])
 		number_of_drawn_notes += 1;
@@ -388,8 +389,9 @@ void update_grid(){
 		}
 		//set mouse dragging/resizing state
 		else if((cell[y][x] & (state_end|state_start)) && !resizing_note && !moving_note){
-			SetMouseCursor(ImGuiMouseCursor_ResizeEW);
-			if(IsMouseDown(0)){
+			if(!IsAnyMouseDown())
+				SetMouseCursor(ImGuiMouseCursor_ResizeEW);
+			if(IsMouseClicked(0)){
 				resizing_note = true;
 				last_x = x;
 				last_y = y;
@@ -397,11 +399,11 @@ void update_grid(){
 		}
 
 		if(moving_note && (last_x != x || last_y != y)){
-			int note_start_x = snap_to_grid ? snap(x) : x - cells_to_left;
+			int note_start_x = snap_to_grid ? snap(x - cells_to_left) : x - cells_to_left;
+
 			//we do nothing if the note hasn't actually moved
 			if(!snap_to_grid || note_start_x != last_x - cells_to_left || last_y != y){
 				// we erase the note first so it consider itself when checking for space
-				assert(cell[last_y][last_x-cells_to_left] == state_start);
 				erase_note(last_y, last_x);
 				if(place_note(y, note_start_x, total_length)){
 					last_x = note_start_x + cells_to_left; //this keeps the values consistent when snapping to grid;
@@ -410,9 +412,7 @@ void update_grid(){
 				}
 				else{
 					//undo note erase
-
 					auto res = place_note(last_y, last_x - cells_to_left, total_length);
-					printf("%d, %d\n",last_y, last_x - cells_to_left);
 					assert(res);
 				}
 			}
@@ -430,10 +430,11 @@ void update_grid(){
 		}
 
 		//place note
-		else if(IsMouseDown(0) && !cell[y][x] && !IsMouseDown(1)) {
+		else if(IsMouseClicked(0) && !cell[y][x] && !IsMouseDown(1)) {
 			int last_x = snap_to_grid ? snap(x) : x;
 			if(place_note(y, last_x, grid_note_length)){
 				need_prediction_update = true;
+
 				if(!playing)
 					engine->play2D(snd_src[y]);
 			}
