@@ -1,3 +1,6 @@
+
+#include "windows.h"
+#include "shellapi.h"
 #include "imgui.h"
 #include "imgui_impl_glfw.h"
 #include "imgui_impl_opengl3.h"
@@ -6,7 +9,9 @@
 #include "irrKlang.h"
 #include "assert.h"
 #include "imgui_internal.h"
+//#include "shellapi.h"
 #include "scales.h"
+
 
 using namespace ImGui;
 using namespace irrklang;
@@ -121,6 +126,7 @@ bool predict_mode = true;
 bool snap_to_grid = true;
 bool english_notes = false;
 bool debug_window = false;
+bool shortcut_window = false;
 
 const char** note_names = english_notes ? english_note_names : regular_note_names;
 
@@ -473,6 +479,15 @@ void draw_one_frame(){
 				if(MenuItem("Export MIDI")){}
 				ImGui::EndMenu();
 			}
+			if(BeginMenu("Help")){
+				if(MenuItem("Keyboard Shortcuts")){
+					shortcut_window = true;
+				}
+				if(MenuItem("Git Repository")){
+					ShellExecute(NULL, NULL, "https://github.com/natapov/midi-sequencer", NULL, NULL, SW_SHOWNORMAL);
+				}
+				ImGui::EndMenu();
+			}
 			EndMainMenuBar();
 		}
 		if(MyButton("Play"))  playing = true;
@@ -489,7 +504,13 @@ void draw_one_frame(){
 		if(selected_base_note != -1)
 			note_preview_value = note_names[selected_base_note];
 		else note_preview_value = "---";
-
+		
+		if(shortcut_window){
+			SetNextWindowFocus();
+			Begin("Keyboard Shortcuts", &shortcut_window, ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoResize);
+			Text("Space - Play/Pause\nBackspace - Stop\nEnter - Play from start\nHold Shift - Toggle snap to grid");
+			End();
+		}
 		SetNextItemWidth(BASE_BOX_WIDTH);
 		if(BeginCombo("Base Note", note_preview_value, 0)){
 			for(int n = 0; n < 12; n++){
