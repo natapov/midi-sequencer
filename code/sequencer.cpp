@@ -1,4 +1,3 @@
-
 #include "windows.h"
 #include "shellapi.h"
 #include "imgui.h"
@@ -9,14 +8,11 @@
 #include "irrKlang.h"
 #include "assert.h"
 #include "imgui_internal.h"
-//#include "shellapi.h"
 #include "scales.h"
-
 
 using namespace ImGui;
 using namespace irrklang;
 
-//todo hold shift to toggle snap to grid
 enum : char{
 	state_empty  = 0,
 	state_start  = 1,
@@ -89,13 +85,12 @@ const int HIGHEST_NOTE_OCTAVE = 5;
 
 // GLOBAL VARIABLES 
 
-ImGuiID grid_id;
 //Sound library stuff
 ISoundSource* snd_src[CELL_GRID_NUM_H];
 ISoundEngine* engine;
 
 //general buffer for temporary strings
-char buff[300]; //todo: this doesn't seem like the thing to do
+char buff[300]; 
 
 //We use glfw for "Time", glfwGetTime() return a double of seconds since startup 
 typedef double Time;
@@ -109,11 +104,9 @@ int playhead_offset = 0; //The playhead is the line that moves when we press pla
 int drawn_notes[12]; //The number of notes of each type currently on the grid
 int number_of_drawn_notes = 0;
 int note_histogram[12]; //Sum total of each note in all the matching scales
-int matching_scales_count_total = 0;
-//int matching_scales_count[12];
+int matching_scales_count = 0;
 char cell[CELL_GRID_NUM_H][CELL_GRID_NUM_W]; //here we store the currently drawn notes on the grid
 bool need_prediction_update = true;
-
 
 // User-modifiable variables:
 int bpm = 180; //beats per minute
@@ -125,7 +118,6 @@ bool playing = false;
 bool predict_mode = true;
 bool snap_to_grid = true;
 bool english_notes = false;
-bool debug_window = false;
 bool shortcut_window = false;
 
 const char** note_names = english_notes ? english_note_names : regular_note_names;
@@ -134,19 +126,13 @@ const char** note_names = english_notes ? english_note_names : regular_note_name
 Note selected_base_note = -1; 
 int selected_scale_idx = -1;
 
-// FUNCIONS
-//for debugging
-inline bool is_note(int n){
-	return (n <= Si && n>= Do);
-}
+// FUNCTIONS
 
 bool is_sharp(Note note){
-	assert(is_note(note));
 	return note == La_ || note == So_ || note == Fa_ || note == Re_ || note == Do_;
 }
 
 inline bool scale_has_note(short scale, Note note){
-	assert(is_note(note));
 	assert((0xf000 & scale) == 0);
 	return scale & (1 << note);
 }
@@ -205,6 +191,7 @@ void reset(){
 inline void clear_selection(){
 	selected_scale_idx = -1;
 	selected_base_note = -1;
+	need_prediction_update = true;
 }
 
 inline bool is_scale_selected(){
@@ -302,10 +289,19 @@ void erase_note(int y, int x){
 	}
 	cell[y][x] = state_empty;
 }
+
+void select_scale(int n){
+	selected_scale_idx = n;
+	need_prediction_update = true;
+	if((scale[n].is_matching & (1 << selected_base_note)) == 0){
+		selected_base_note = -1;
+	}
+}
+
 void make_scale_prediction(){
 	short current_notes = notes_array_to_scale(drawn_notes);
 	for(auto& it : note_histogram) it = 0;
-	matching_scales_count_total = 0;
+	matching_scales_count = 0;
 	for(int j = 0; j < 12; j++){
 		short note_mask = j ? 1 << (12 - j) : 1;
 		for(int i = 0; i < NUM_SCALES; i++){
@@ -314,7 +310,7 @@ void make_scale_prediction(){
 
 				//note histogram is limited to selected note
 				if(selected_base_note == -1 || selected_base_note == j){
-					matching_scales_count_total += 1;
+					matching_scales_count += 1;
 					for(int k = 0; k < 12; k++)
 						if(scale_has_note(scale[i].notes, k))
 							note_histogram[(12 + k - j) % 12] += 1;
@@ -470,9 +466,9 @@ void draw_one_frame(){
 					english_notes = !english_notes;
 					note_names = english_notes ? english_note_names : regular_note_names;
 				}
-				if(MenuItem("Show debug window", NULL, debug_window)){
-					debug_window = !debug_window;
-				}
+				//if(MenuItem("Show debug window", NULL, debug_window)){
+				//	debug_window = !debug_window;
+				//}
 				ImGui::EndMenu();
 			}
 			if(BeginMenu("File")){
@@ -517,8 +513,10 @@ void draw_one_frame(){
 				short note_mask = 1<<n;
 				const bool is_selected = (selected_base_note == n);
 				if(!predict_mode || selected_scale_idx == -1 || (scale[selected_scale_idx].is_matching & note_mask)){
-					if(Selectable(note_names[n], is_selected))
+					if(Selectable(note_names[n], is_selected)){
 						selected_base_note = n;
+						need_prediction_update = true;
+					}
 				}
 			}
 			EndCombo();
@@ -531,7 +529,7 @@ void draw_one_frame(){
 			scale_preview_value = scale[selected_scale_idx].name;
 		}
 		else if(predict_mode){
-			sprintf(buff, "%d Possible scales", matching_scales_count_total);
+			sprintf(buff, "%d Possible scales", matching_scales_count);
 			scale_preview_value = buff;
 		}
 		else{
@@ -542,20 +540,22 @@ void draw_one_frame(){
 		if(BeginCombo("Scale", scale_preview_value, 0)){
 			for(int n = 0; n < NUM_SCALES; n++){
 				const bool is_selected = (selected_scale_idx == n);
-				bool scale_matches;
 				if(predict_mode){
-					if(scale[n].is_matching){
+					if((selected_base_note == -1 && scale[n].is_matching) || (scale[n].is_matching & 1<<selected_base_note)){
 						if(scale[n].number_of_notes == number_of_drawn_notes){
 							sprintf(buff, "%s [Exact match]", scale[n].name);
-							if(Selectable(buff, is_selected))
-								selected_scale_idx = n;
+							if(Selectable(buff, is_selected)){
+								select_scale(n);
+							}
 						}
-						else if(Selectable(scale[n].name, is_selected)) 
-							selected_scale_idx = n;
+						else if(Selectable(scale[n].name, is_selected)){
+							select_scale(n);
+						}
 					}
 				}
-				else if(Selectable(scale[n].name, is_selected)) 
-					selected_scale_idx = n;
+				else if(Selectable(scale[n].name, is_selected)){
+					select_scale(n);
+				}
 			}
 			EndCombo();
 		}
@@ -571,6 +571,7 @@ void draw_one_frame(){
 			playing = false;
 			number_of_drawn_notes = 0;
 			for(auto& it : drawn_notes) it = 0;
+			need_prediction_update = true;
 		}
 		SameLine();
 		SetNextItemWidth(BPM_BOX_WIDTH);
@@ -599,14 +600,14 @@ void draw_one_frame(){
 			Note note = row_to_note(i);
 			int octave = HIGHEST_NOTE_OCTAVE - i/12;
 			const char* name = NULL;
-			assert(is_note(note));
+			assert(note <= Si && note>= Do);
 			name = note_names[note];
 			
 			ImVec4 color;
 			//draw grid background
 			if(predict_mode && !is_scale_selected()){
 				if(number_of_drawn_notes){
-					float density = (float) note_histogram[note] / ((float) matching_scales_count_total);
+					float density = (float) note_histogram[note] / ((float) matching_scales_count);
 					color = lerp(ColorConvertU32ToFloat4(BLACK_COL), ColorConvertU32ToFloat4(GRID_BG_COL), density);
 					draw_list->AddRectFilled(ImVec2(SIDE_BAR, TOP_BAR + CELL_SIZE_H*i), ImVec2(SIDE_BAR + GRID_W, TOP_BAR + CELL_SIZE_H*(i+1) - 1), ColorConvertFloat4ToU32(color));
 				}
@@ -734,7 +735,7 @@ int main(){
 		last = current;
 
 		//loop playhead
-		if(elapsed >= max_time)  elapsed -= max_time;
+		if(elapsed >= max_time) elapsed -= max_time;
 		playhead_offset = time_to_pixels(elapsed);
 
 		if(predict_mode && need_prediction_update){
@@ -743,21 +744,9 @@ int main(){
 		}
 		draw_one_frame();
 		update_grid();
-		// Debug window
-		if(debug_window){
-			//SetNextWindowFocus();
-			Begin("Debug");
-			sprintf(buff, "Mouse Wheel: %f", io.MouseWheel);
-			Text(buff);
-			sprintf(buff, "Elapsed time: %f", elapsed);
-			Text(buff);
-			sprintf(buff, "Current time: %f", current);
-			Text(buff);
-			End();
-		}
 
 		//ShowDemoWindow(NULL);
-		
+
 		// Rendering
 		Render();
 		ImGui_ImplOpenGL3_RenderDrawData(GetDrawData());
