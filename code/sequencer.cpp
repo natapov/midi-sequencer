@@ -11,7 +11,6 @@
 using namespace ImGui;
 using namespace irrklang;
 
-//todo moving note off screen
 //todo hold shift to toggle snap to grid
 enum : char{
 	state_empty  = 0,
@@ -701,6 +700,12 @@ int main(){
 		if(IsKeyPressed(ImGuiKey_Enter)){
 			playing = true;
 			reset();
+		}
+		if( IsKeyPressed(ImGuiKey_LeftShift,  false) || 
+			IsKeyReleased(ImGuiKey_LeftShift)        ||
+			IsKeyPressed(ImGuiKey_RightShift, false) || 
+			IsKeyReleased(ImGuiKey_RightShift)       ){
+			snap_to_grid = !snap_to_grid;
 		}
 		// Time
 		current = glfwGetTime();
