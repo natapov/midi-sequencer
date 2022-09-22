@@ -18,6 +18,7 @@ enum : char{
 	state_end    = 4,
 };
 
+//todo: resizing notes bugs
 typedef int Note;
 enum {
 	Si  = 11,
@@ -91,7 +92,7 @@ ISoundSource* snd_src[CELL_GRID_NUM_H];
 ISoundEngine* engine;
 
 //general buffer for temporary strings
-char buff[1114]; //todo: this doesn't seem like the thing to do
+char buff[300]; //todo: this doesn't seem like the thing to do
 
 //We use glfw for "Time", glfwGetTime() return a double of seconds since startup 
 typedef double Time;
@@ -376,6 +377,7 @@ void update_grid(){
 					cur_x--;
 					cells_to_left++;
 				}
+				assert(cell[y][x-cells_to_left] == state_start);
 				cur_x = x;
 				total_length = cells_to_left + 1;
 				while(cell[y][cur_x] != state_end){
@@ -399,14 +401,16 @@ void update_grid(){
 			//we do nothing if the note hasn't actually moved
 			if(!snap_to_grid || note_start_x != last_x - cells_to_left || last_y != y){
 				// we erase the note first so it consider itself when checking for space
+				assert(cell[last_y][last_x-cells_to_left] == state_start);
 				erase_note(last_y, last_x);
 				if(place_note(y, note_start_x, total_length)){
-					last_x = x;
+					last_x = note_start_x + cells_to_left; //this keeps the values consistent when snapping to grid;
 					last_y = y;
 					need_prediction_update = true;
 				}
 				else{
-					//undo note ease
+					//undo note erase
+
 					auto res = place_note(last_y, last_x - cells_to_left, total_length);
 					printf("%d, %d\n",last_y, last_x - cells_to_left);
 					assert(res);
