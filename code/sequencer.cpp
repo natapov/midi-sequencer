@@ -12,7 +12,7 @@
 using namespace ImGui;
 using namespace irrklang;
 
-//todo: add spaces to scale names
+//todo: replace audio library
 
 enum : char{
 	state_empty  = 0,
@@ -703,7 +703,7 @@ void draw_one_frame(){
 	End();//main window
 }
 
-int main(){
+int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, int nCmdShow){
 	engine = createIrrKlangDevice();
 	if(!engine) return 1; // error starting up the engine
 
