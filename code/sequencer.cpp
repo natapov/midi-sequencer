@@ -13,6 +13,8 @@
 using namespace ImGui;
 using namespace irrklang;
 
+//todo: add spaces to scale names
+
 enum : char{
 	state_empty  = 0,
 	state_start  = 1,
@@ -95,7 +97,7 @@ char buff[300];
 //We use glfw for "Time", glfwGetTime() return a double of seconds since startup 
 typedef double Time;
 Time elapsed  = 0; //Seconds played since last loop
-Time max_time = 0; //Maximum elapsed time value
+Time loop_time = 0;
 
 int last_played_grid_col;// this is only global because it needs to be reset in reset()
 int playhead_offset = 0; //The playhead is the line that moves when we press play, this is it's location on the grid
@@ -107,6 +109,7 @@ int note_histogram[12]; //Sum total of each note in all the matching scales
 int matching_scales_count = 0;
 char cell[CELL_GRID_NUM_H][CELL_GRID_NUM_W]; //here we store the currently drawn notes on the grid
 bool need_prediction_update = true;
+int max_x_cell = 0;
 
 // User-modifiable variables:
 int bpm = 180; //beats per minute
@@ -118,7 +121,9 @@ bool playing = false;
 bool predict_mode = true;
 bool snap_to_grid = true;
 bool english_notes = false;
+bool auto_loop = true;
 bool shortcut_window = false;
+
 
 const char** note_names = english_notes ? english_note_names : regular_note_names;
 
@@ -186,6 +191,7 @@ inline Time pixels_to_time(int p){
 void reset(){
 	elapsed = 0;
 	last_played_grid_col = 0;
+	max_x_cell = -1;
 }
 
 inline void clear_selection(){
@@ -197,6 +203,17 @@ inline void clear_selection(){
 inline bool is_scale_selected(){
 	return selected_scale_idx != -1 && selected_base_note != -1;
 }
+
+void update_loop_time(){
+	if(max_x_cell == -1 || !auto_loop){
+		loop_time = pixels_to_time(GRID_W);
+		return;
+	}
+	int cells_in_bar = CELLS_PER_BEAT * beats_per_bar;
+	int max_bar = ((max_x_cell / cells_in_bar) + 1) * cells_in_bar;
+	loop_time = pixels_to_time(max_bar * CELL_SIZE_W);
+}
+
 int resize(int y, int old_x, int cur_x){
 	assert(cell[y][old_x] & (state_end|state_start));
 	if(cur_x == old_x) return old_x;
@@ -245,7 +262,7 @@ bool place_note(int y, int x, int note_length){
 	for(int i = 0; i < note_length; i++){
 		if(x+i >= CELL_GRID_NUM_W || cell[y][x+i] != state_empty)
 			return false;
-	}		
+	}
 	if(!drawn_notes[row_to_note(y)])
 		number_of_drawn_notes += 1;
 	drawn_notes[row_to_note(y)] += 1;
@@ -261,8 +278,7 @@ void erase_note(int y, int x){
 	if(drawn_notes[row_to_note(y)] == 1) 
 		number_of_drawn_notes -= 1;
 	drawn_notes[row_to_note(y)] -= 1;
-
-	int cur_x; 
+	int cur_x;
 	if(cell[y][x] != state_end){
 		cur_x = x + 1;
 		while(true){
@@ -288,6 +304,7 @@ void erase_note(int y, int x){
 		}
 	}
 	cell[y][x] = state_empty;
+
 }
 
 void select_scale(int n){
@@ -307,7 +324,6 @@ void make_scale_prediction(){
 		for(int i = 0; i < NUM_SCALES; i++){
 			if(scale_contains(scale[i].notes, current_notes)){
 				scale[i].is_matching |= note_mask;
-
 				//note histogram is limited to selected note
 				if(selected_base_note == -1 || selected_base_note == j){
 					matching_scales_count += 1;
@@ -466,6 +482,27 @@ void draw_one_frame(){
 					english_notes = !english_notes;
 					note_names = english_notes ? english_note_names : regular_note_names;
 				}
+				if(BeginMenu("Time Signiture")){
+					if(MenuItem("1/4", NULL, beats_per_bar == 1)){
+						beats_per_bar = 1;
+					}
+					if(MenuItem("2/4", NULL, beats_per_bar == 2)){
+						beats_per_bar = 2;
+					}
+					if(MenuItem("3/4", NULL, beats_per_bar == 3)){
+						beats_per_bar = 3;
+					}
+					if(MenuItem("4/4", NULL, beats_per_bar == 4)){
+						beats_per_bar = 4;
+					}
+					if(MenuItem("5/4", NULL, beats_per_bar == 5)){
+						beats_per_bar = 5;
+					}
+					ImGui::EndMenu();
+				}
+				if(MenuItem("Auto loop"), NULL, auto_loop){
+					auto_loop = !auto_loop;
+				}
 				//if(MenuItem("Show debug window", NULL, debug_window)){
 				//	debug_window = !debug_window;
 				//}
@@ -504,7 +541,7 @@ void draw_one_frame(){
 		if(shortcut_window){
 			SetNextWindowFocus();
 			Begin("Keyboard Shortcuts", &shortcut_window, ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoResize);
-			Text("Space - Play/Pause\nBackspace - Stop\nEnter - Play from start\nHold Shift - Toggle snap to grid");
+			Text("Space - Play/Pause\nBackspace - Stop\nEnter - Play from start\nHold Shift - Toggle snap to grid\nMouse Wheel - Change note length");
 			End();
 		}
 		SetNextItemWidth(BASE_BOX_WIDTH);
@@ -578,7 +615,6 @@ void draw_one_frame(){
 		if(InputInt("BPM", &bpm)){
 			if(bpm > 999) bpm = 999;
 			if(bpm < 10)  bpm =  10;
-			max_time = pixels_to_time(GRID_W);
 			elapsed  = pixels_to_time(playhead_offset); //how much time _would have_ passed had we gotten to this pixel at current bpm
 		}
 		SameLine();
@@ -649,10 +685,14 @@ void draw_one_frame(){
 		BeginChild("note grid", ImVec2(WINDOW_W - SIDE_BAR, WINDOW_H - TOP_BAR), false, WINDOW_FLAGS);
 		PushStyleColor(ImGuiCol_Header, GRID_NOTE_COL);
 		PushStyleColor(ImGuiCol_Border, NOTE_BORDER_COL);
+		max_x_cell = -1;
 		for (int y = 0; y < CELL_GRID_NUM_H; y++){
 			for (int x = 0; x < CELL_GRID_NUM_W; x++){
 				if (x > 0) SameLine();
 				Cell(cell[y][x], ImVec2(CELL_SIZE_W, CELL_SIZE_H), LINE_W);
+				if(cell[y][x] && x > max_x_cell){
+					max_x_cell = x;
+				}
 			}
 		}
 		PopStyleVar();
@@ -661,6 +701,8 @@ void draw_one_frame(){
 		//draw playhead
 		const int playhead = SIDE_BAR + playhead_offset;
 		GetWindowDrawList()->AddRectFilled(ImVec2(playhead - LINE_W, 0), ImVec2(playhead + LINE_W, GRID_H + TOP_BAR), PLAYHEAD_COL);
+		GetWindowDrawList()->AddRectFilled(ImVec2(loop_time - LINE_W, 0), ImVec2(loop_time + LINE_W, GRID_H + TOP_BAR), PLAYHEAD_COL);
+
 		EndChild();
 	}
 
@@ -704,7 +746,6 @@ int main(){
 	// Time variables
 	Time current = 0; //seconds since startup
 	Time last    = 0; //time last frame
-	max_time     = pixels_to_time(GRID_W); //time to reach the end of note grid
 
 	// Main loop
 	while(!glfwWindowShouldClose(window)) {
@@ -735,7 +776,7 @@ int main(){
 		last = current;
 
 		//loop playhead
-		if(elapsed >= max_time) elapsed -= max_time;
+		if(elapsed >= loop_time) elapsed -= loop_time;
 		playhead_offset = time_to_pixels(elapsed);
 
 		if(predict_mode && need_prediction_update){
@@ -743,8 +784,9 @@ int main(){
 			need_prediction_update = false;
 		}
 		draw_one_frame();
+		update_loop_time();
 		update_grid();
-
+		assert(loop_time != 0);
 		//ShowDemoWindow(NULL);
 
 		// Rendering
