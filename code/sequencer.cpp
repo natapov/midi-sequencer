@@ -23,7 +23,7 @@ enum : char{
 };
 
 typedef int Note;
-enum {
+enum{
 	Si  = 11,
 	La_ = 10,
 	La  = 9,
@@ -123,7 +123,6 @@ bool snap_to_grid = true;
 bool english_notes = false;
 bool auto_loop = true;
 bool shortcut_window = false;
-
 
 const char** note_names = english_notes ? english_note_names : regular_note_names;
 
@@ -340,6 +339,7 @@ void make_scale_prediction(){
 		current_notes = scale_rotate(current_notes, 1);		
 	}
 }
+
 void update_grid(){
 	if(playing){
 		int current = (playhead_offset / CELL_SIZE_W) % CELL_GRID_NUM_W;
@@ -500,12 +500,11 @@ void draw_one_frame(){
 					}
 					ImGui::EndMenu();
 				}
-				if(MenuItem("Auto loop"), NULL, auto_loop){
+				if(MenuItem("Auto loop", NULL, auto_loop)){
 					auto_loop = !auto_loop;
 				}
-				//if(MenuItem("Show debug window", NULL, debug_window)){
-				//	debug_window = !debug_window;
-				//}
+				
+
 				ImGui::EndMenu();
 			}
 			if(BeginMenu("File")){
@@ -659,8 +658,6 @@ void draw_one_frame(){
 		PopStyleVar();
 		EndChild();
 	}
-
-	
 
 	{// GRID LINES + PLAYHEAD
 		SetNextWindowPos(ImVec2(0,TOP_BAR));
