@@ -7,7 +7,6 @@
 #include "GLFW/glfw3.h"
 #include "irrKlang.h"
 #include "assert.h"
-#include "imgui_internal.h"
 #include "scales.h"
 
 using namespace ImGui;
@@ -115,7 +114,6 @@ int max_x_cell = 0;
 int bpm = 180; //beats per minute
 int grid_note_length = 8; // the size of notes the user is currently drawing, in cells
 int note_length_idx  = 2;
-
 int beats_per_bar = 4; // the time signiture of the music
 bool playing = false;
 bool predict_mode = true;
@@ -128,11 +126,10 @@ const char** note_names = english_notes ? english_note_names : regular_note_name
 
 //selector variables
 Note selected_base_note = -1; 
-int selected_scale_idx = -1;
+int selected_scale_idx  = -1;
 
 // FUNCTIONS
-
-bool is_sharp(Note note){
+inline bool is_sharp(Note note){
 	return note == La_ || note == So_ || note == Fa_ || note == Re_ || note == Do_;
 }
 
@@ -187,7 +184,7 @@ inline Time pixels_to_time(int p){
 	return (((double)p * 60.0) / (double) (bpm * CELL_SIZE_W*CELLS_PER_BEAT));
 }
 
-void reset(){
+inline void reset(){
 	elapsed = 0;
 	last_played_grid_col = 0;
 	max_x_cell = -1;
@@ -203,7 +200,7 @@ inline bool is_scale_selected(){
 	return selected_scale_idx != -1 && selected_base_note != -1;
 }
 
-void update_loop_time(){
+inline void update_loop_time(){
 	if(max_x_cell == -1 || !auto_loop){
 		loop_time = pixels_to_time(GRID_W);
 		return;
@@ -356,26 +353,27 @@ void update_grid(){
 	SetNextWindowSize(ImVec2(WINDOW_W - SIDE_BAR, WINDOW_H));
 	Begin("note grid overlay", NULL, INVISIBLE_WINDOW_FLAGS);
 	if(IsWindowHovered()){
-		ImGuiIO& io = GetIO();
-		
-		if(io.MouseWheel){
-			note_length_idx -= (int) io.MouseWheel;
+		int mouse_scroll= GetIO().MouseWheel;
+		if(mouse_scroll){
+			note_length_idx -= mouse_scroll;
 			if(note_length_idx < 0) note_length_idx = 0;
 			if(note_length_idx > 4) note_length_idx = 4;
 			grid_note_length = (CELLS_PER_BEAT*4) >> note_length_idx;
 		}
 		
-		//get grid co-ordinate
+		//get grid co-ordinates
 		ImVec2 mouse_pos = GetMousePos();
 		int y = (mouse_pos.y - TOP_BAR)  / CELL_SIZE_H;
 		int x = (mouse_pos.x - SIDE_BAR) / CELL_SIZE_W;
 		
+
+		//resizing / moving note variables 
 		static bool resizing_note = false;
 		static int  last_x;
 		static int  last_y;
 		static bool moving_note = false;
-		static int cells_to_left;
-		static int total_length;
+		static int  cells_to_left;
+		static int  total_length;
 		
 		//reset mouse cursor / state
 		if(!IsMouseDown(0)){
@@ -503,8 +501,6 @@ void draw_one_frame(){
 				if(MenuItem("Auto loop", NULL, auto_loop)){
 					auto_loop = !auto_loop;
 				}
-				
-
 				ImGui::EndMenu();
 			}
 			if(BeginMenu("File")){
