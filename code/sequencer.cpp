@@ -11,7 +11,13 @@
 
 using namespace ImGui;
 using namespace irrklang;
-
+//---- Tip: You can add extra functions within the ImGui:: namespace, here or in your own headers files.
+/*
+namespace ImGui
+{
+    void MyFunction(const char* name, const MyMatrix44& v);
+}
+*/
 enum : char{
 	state_empty  = 0,
 	state_start  = 1,
