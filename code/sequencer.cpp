@@ -12,8 +12,6 @@
 using namespace ImGui;
 using namespace irrklang;
 
-//todo: replace audio library
-
 enum : char{
 	state_empty  = 0,
 	state_start  = 1,
@@ -63,6 +61,8 @@ const int BPM_BOX_WIDTH   = 105;
 const int SCALE_BOX_WIDTH = 300;
 const int BASE_BOX_WIDTH  = 85;
 
+const int FONT_SIZE = 20;
+
 // COLORS
 const ImU32 BAR_LINE_COL    = IM_COL32(100, 100, 100, 255);
 const ImU32 BEAT_LINE_COL   = IM_COL32(40 , 40 , 40 , 255);
@@ -75,8 +75,6 @@ const ImU32 GRID_BG_COL     = IM_COL32(75 , 100, 150, 255);
 const ImU32 NOTE_BORDER_COL = IM_COL32(200, 200, 100, 255);
 // FLAGS
 const ImGuiWindowFlags MAIN_WINDOW_FLAGS = ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove;
-const ImGuiWindowFlags WINDOW_FLAGS = MAIN_WINDOW_FLAGS | ImGuiWindowFlags_NoBackground;
-const ImGuiWindowFlags INVISIBLE_WINDOW_FLAGS = ImGuiWindowFlags_NoBackground | ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove;
 
 const char* regular_note_names[12] = {"DO", "DO#", "RE", "RE#", "MI", "FA", "FA#", "SO", "SO#", "LA", "LA#", "SI"};
 const char* english_note_names[12] = {"C",  "C#",  "D",  "D#",  "E",  "F",  "F#",  "G",  "G#",  "A",  "A#",  "B" };
@@ -109,6 +107,7 @@ int matching_scales_count = 0;
 char cell[CELL_GRID_NUM_H][CELL_GRID_NUM_W]; //here we store the currently drawn notes on the grid
 bool need_prediction_update = true;
 int max_x_cell = 0;
+bool is_grid_hovered = false;
 
 // User-modifiable variables:
 int bpm = 180; //beats per minute
@@ -162,7 +161,7 @@ inline ImVec4 lerp(ImVec4 a, ImVec4 b, float t){
 	return ImVec4(a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t, a.z + (b.z - a.z) * t, a.w + (b.w - a.w) * t); 
 }
 
-int row_to_note(int n){
+inline int row_to_note(int n){
 	return 11 - ((n + 11 - HIGHEST_NOTE) % 12);
 }
 
@@ -200,17 +199,26 @@ inline bool is_scale_selected(){
 	return selected_scale_idx != -1 && selected_base_note != -1;
 }
 
-inline void update_loop_time(){
-	if(max_x_cell == -1 || !auto_loop){
+void update_elapsed_time(){
+	Time loop_time, current = glfwGetTime();
+	static Time last;
+	if(playing)	 elapsed += current - last;
+	last = current;
+
+	playhead_offset = time_to_pixels(elapsed);
+
+	const int cells_in_bar = CELLS_PER_BEAT * beats_per_bar;
+	const int max_bar = ((max_x_cell / cells_in_bar) + 1) * cells_in_bar;
+	if(max_x_cell == -1 || !auto_loop)
 		loop_time = pixels_to_time(GRID_W);
-		return;
-	}
-	int cells_in_bar = CELLS_PER_BEAT * beats_per_bar;
-	int max_bar = ((max_x_cell / cells_in_bar) + 1) * cells_in_bar;
-	loop_time = pixels_to_time(max_bar * CELL_SIZE_W);
+	else
+		loop_time = pixels_to_time(max_bar * CELL_SIZE_W);
+
+	if(elapsed >= loop_time) 
+		elapsed -= loop_time;
 }
 
-int resize(int y, int old_x, int cur_x){
+int resize_note(int y, int old_x, int cur_x){
 	assert(cell[y][old_x] & (state_end|state_start));
 	if(cur_x == old_x) return old_x;
 	int new_x = -1, i;
@@ -338,21 +346,7 @@ void make_scale_prediction(){
 }
 
 void update_grid(){
-	if(playing){
-		int current = (playhead_offset / CELL_SIZE_W) % CELL_GRID_NUM_W;
-		for(int x = last_played_grid_col; x != current; x = (x+1)%CELL_GRID_NUM_W){
-			for(int y = 0; y < CELL_GRID_NUM_H; y++){
-				if(cell[y][x] == state_start)
-					engine->play2D(snd_src[y]);
-			}
-		}
-		last_played_grid_col = current;
-	}
-	
-	SetNextWindowPos(ImVec2(SIDE_BAR,TOP_BAR));
-	SetNextWindowSize(ImVec2(WINDOW_W - SIDE_BAR, WINDOW_H));
-	Begin("note grid overlay", NULL, INVISIBLE_WINDOW_FLAGS);
-	if(IsWindowHovered()){
+	if(is_grid_hovered){
 		int mouse_scroll= GetIO().MouseWheel;
 		if(mouse_scroll){
 			note_length_idx -= mouse_scroll;
@@ -366,7 +360,6 @@ void update_grid(){
 		int y = (mouse_pos.y - TOP_BAR)  / CELL_SIZE_H;
 		int x = (mouse_pos.x - SIDE_BAR) / CELL_SIZE_W;
 		
-
 		//resizing / moving note variables 
 		static bool resizing_note = false;
 		static int  last_x;
@@ -386,8 +379,7 @@ void update_grid(){
 				last_x = x;
 				last_y = y;
 				moving_note = true;
-				cells_to_left = 0;
-				
+				cells_to_left = 0;		
 				int cur_x = x;
 				while(cell[y][cur_x] != state_start){
 					cur_x--;
@@ -435,7 +427,7 @@ void update_grid(){
 
 		else if(resizing_note){
 			SetMouseCursor(ImGuiMouseCursor_ResizeEW);
-			last_x = resize(last_y, last_x, x);
+			last_x = resize_note(last_y, last_x, x);
 		}
 
 		//erase when right mouse button is pressed
@@ -455,7 +447,29 @@ void update_grid(){
 			}
 		}
 	}
-	End();
+}
+
+inline void handle_keyboard_input(){
+	if(IsKeyPressed(ImGuiKey_Space)) playing = !playing;
+	if(IsKeyPressed(ImGuiKey_Backspace)){
+		playing = false;
+		reset();
+	}
+	if(IsKeyPressed(ImGuiKey_Enter)){
+		playing = true;
+		reset();
+	}
+	if( IsKeyPressed(ImGuiKey_LeftShift,  false) || 
+		IsKeyReleased(ImGuiKey_LeftShift)        ||
+		IsKeyPressed(ImGuiKey_RightShift, false) || 
+		IsKeyReleased(ImGuiKey_RightShift)       ){
+		snap_to_grid = !snap_to_grid;
+	}		
+
+	if(predict_mode && need_prediction_update){
+		make_scale_prediction();
+		need_prediction_update = false;
+	}
 }
 
 void draw_one_frame(){
@@ -463,10 +477,9 @@ void draw_one_frame(){
 	SetNextWindowPos(ImVec2(0,0));
 	PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0,0)); 
 	Begin("main window", NULL, MAIN_WINDOW_FLAGS);
+	PopStyleVar();
 	{// TOP BAR
-		SetNextWindowPos(ImVec2(0,MENU_BAR));
-		BeginChild("Top Bar", ImVec2(WINDOW_W, TOP_BAR), false, WINDOW_FLAGS);
-		PopStyleVar();
+		SetCursorPos(ImVec2(0,MENU_BAR));
 		if(BeginMainMenuBar()){
 			if(BeginMenu("Settings")){
 				if(MenuItem("Predict Mode", NULL, predict_mode)){
@@ -534,7 +547,6 @@ void draw_one_frame(){
 		else note_preview_value = "---";
 		
 		if(shortcut_window){
-			SetNextWindowFocus();
 			Begin("Keyboard Shortcuts", &shortcut_window, ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoResize);
 			Text("Space - Play/Pause\nBackspace - Stop\nEnter - Play from start\nHold Shift - Toggle snap to grid\nMouse Wheel - Change note length");
 			End();
@@ -617,15 +629,13 @@ void draw_one_frame(){
 		if(Combo("a", &note_length_idx, "1\0001/2\0001/4\0001/8\0001/16\0\0")){
 			grid_note_length = (CELLS_PER_BEAT*4) >> note_length_idx;
 		}
-		EndChild();
 	}
 
 	PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0,0)); 
 
 	{// NOTE COLOUMN
 		PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(0,0));
-		SetNextWindowPos(ImVec2(0, TOP_BAR));
-		BeginChild("Note names", ImVec2(WINDOW_W, WINDOW_H - TOP_BAR), false, WINDOW_FLAGS);
+		SetCursorPos(ImVec2(0, TOP_BAR));
 		ImDrawList* draw_list = GetWindowDrawList();
 		for(int i = 0; i < CELL_GRID_NUM_H; i++){
 			Note note = row_to_note(i);
@@ -652,14 +662,10 @@ void draw_one_frame(){
 			PopStyleColor(2);
 		}
 		PopStyleVar();
-		EndChild();
 	}
 
 	{// GRID LINES + PLAYHEAD
-		SetNextWindowPos(ImVec2(0,TOP_BAR));
-		BeginChild("LINES", ImVec2(WINDOW_W, WINDOW_H - TOP_BAR), false, ImGuiWindowFlags_NoMouseInputs | WINDOW_FLAGS); 
 		ImDrawList* draw_list = GetWindowDrawList();
-
 		for(int i = 0; i<= CELL_GRID_NUM_H; i++){
 			draw_list->AddRectFilled(ImVec2(0, TOP_BAR + CELL_SIZE_H*i - LINE_W), ImVec2(GRID_W + SIDE_BAR, TOP_BAR + CELL_SIZE_H*i + LINE_W), BEAT_LINE_COL);
 		}
@@ -667,21 +673,20 @@ void draw_one_frame(){
 			if(i % grid_note_length) continue;
 			int cells_per_bar = CELLS_PER_BEAT * beats_per_bar;
 			ImU32 color = i % cells_per_bar == 0 ? BAR_LINE_COL : BEAT_LINE_COL;
-			draw_list->AddRectFilled(ImVec2(SIDE_BAR + CELL_SIZE_W*i - LINE_W, 0), ImVec2(SIDE_BAR + CELL_SIZE_W*i + LINE_W, GRID_H + TOP_BAR), color);
+			draw_list->AddRectFilled(ImVec2(SIDE_BAR + CELL_SIZE_W*i - LINE_W, TOP_BAR), ImVec2(SIDE_BAR + CELL_SIZE_W*i + LINE_W, GRID_H + TOP_BAR), color);
 		}
-		EndChild();
 	}
 
 	{// NOTE GRID
 		PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(0,0));
-		SetNextWindowPos(ImVec2(SIDE_BAR,TOP_BAR));
-		BeginChild("note grid", ImVec2(WINDOW_W - SIDE_BAR, WINDOW_H - TOP_BAR), false, WINDOW_FLAGS);
 		PushStyleColor(ImGuiCol_Header, GRID_NOTE_COL);
 		PushStyleColor(ImGuiCol_Border, NOTE_BORDER_COL);
+		SetCursorPos(ImVec2(SIDE_BAR,TOP_BAR));
 		max_x_cell = -1;
-		for (int y = 0; y < CELL_GRID_NUM_H; y++){
-			for (int x = 0; x < CELL_GRID_NUM_W; x++){
-				if (x > 0) SameLine();
+		for(int y = 0; y < CELL_GRID_NUM_H; y++){
+			for(int x = 0; x < CELL_GRID_NUM_W; x++){
+				if(x > 0) SameLine();
+				else SetCursorPos(ImVec2(SIDE_BAR, TOP_BAR + y*CELL_SIZE_H));
 				Cell(cell[y][x], ImVec2(CELL_SIZE_W, CELL_SIZE_H), LINE_W);
 				if(cell[y][x] && x > max_x_cell){
 					max_x_cell = x;
@@ -693,21 +698,20 @@ void draw_one_frame(){
 
 		//draw playhead
 		const int playhead = SIDE_BAR + playhead_offset;
-		GetWindowDrawList()->AddRectFilled(ImVec2(playhead - LINE_W, 0), ImVec2(playhead + LINE_W, GRID_H + TOP_BAR), PLAYHEAD_COL);
-		GetWindowDrawList()->AddRectFilled(ImVec2(loop_time - LINE_W, 0), ImVec2(loop_time + LINE_W, GRID_H + TOP_BAR), PLAYHEAD_COL);
-
-		EndChild();
+		GetWindowDrawList()->AddRectFilled(ImVec2(playhead - LINE_W, TOP_BAR), ImVec2(playhead + LINE_W, GRID_H + TOP_BAR), PLAYHEAD_COL);
 	}
 
 	PopStyleVar();// reset window padding
+
+	SetCursorPos(ImVec2(SIDE_BAR,TOP_BAR));
+	InvisibleButton("grid_overlay", ImVec2(WINDOW_W - SIDE_BAR, WINDOW_H), ImGuiButtonFlags_MouseButtonLeft | ImGuiButtonFlags_MouseButtonRight);
+	is_grid_hovered = IsItemHovered();
 	End();//main window
 }
 
 int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, int nCmdShow){
 	engine = createIrrKlangDevice();
 	if(!engine) return 1; // error starting up the engine
-
-	//SetProcessDPIAware();
 
 	// Create window with graphics context
 	if(!glfwInit()) return 1;
@@ -720,9 +724,7 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine
 	CreateContext();
 	ImGui_ImplGlfw_InitForOpenGL(window, true);
 	ImGui_ImplOpenGL3_Init("#version 130");
-	ImGuiIO& io = GetIO();
-	int FONT_SIZE = 20;
-	io.Fonts->AddFontFromFileTTF("../Lucida Console Regular.ttf", FONT_SIZE);
+	GetIO().Fonts->AddFontFromFileTTF("../Lucida Console Regular.ttf", FONT_SIZE);
 	
 	ImGuiStyle& style = GetStyle();
 	style.WindowBorderSize = 0;
@@ -736,10 +738,6 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine
 	engine->play2D(snd_src[0]);
 	engine->stopAllSoundsOfSoundSource(snd_src[0]);
 	
-	// Time variables
-	Time current = 0; //seconds since startup
-	Time last    = 0; //time last frame
-
 	// Main loop
 	while(!glfwWindowShouldClose(window)) {
 		glfwPollEvents();
@@ -747,39 +745,24 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine
 		ImGui_ImplGlfw_NewFrame();
 		NewFrame();
 		
-		// Keyboard
-		if(IsKeyPressed(ImGuiKey_Space)) playing = !playing;
-		if(IsKeyPressed(ImGuiKey_Backspace)){
-			playing = false;
-			reset();
-		}
-		if(IsKeyPressed(ImGuiKey_Enter)){
-			playing = true;
-			reset();
-		}
-		if( IsKeyPressed(ImGuiKey_LeftShift,  false) || 
-			IsKeyReleased(ImGuiKey_LeftShift)        ||
-			IsKeyPressed(ImGuiKey_RightShift, false) || 
-			IsKeyReleased(ImGuiKey_RightShift)       ){
-			snap_to_grid = !snap_to_grid;
-		}
-		// Time
-		current = glfwGetTime();
-		if(playing)	elapsed += current - last;
-		last = current;
+		handle_keyboard_input();
+		update_elapsed_time();
 
-		//loop playhead
-		if(elapsed >= loop_time) elapsed -= loop_time;
-		playhead_offset = time_to_pixels(elapsed);
-
-		if(predict_mode && need_prediction_update){
-			make_scale_prediction();
-			need_prediction_update = false;
+		//play notes
+		if(playing){
+			int current = (playhead_offset / CELL_SIZE_W) % CELL_GRID_NUM_W;
+			for(int x = last_played_grid_col; x != current; x = (x+1)%CELL_GRID_NUM_W){
+				for(int y = 0; y < CELL_GRID_NUM_H; y++){
+					if(cell[y][x] == state_start)
+						engine->play2D(snd_src[y]);
+				}
+			}
+			last_played_grid_col = current;
 		}
+
 		draw_one_frame();
-		update_loop_time();
 		update_grid();
-		assert(loop_time != 0);
+
 		//ShowDemoWindow(NULL);
 
 		// Rendering
@@ -787,6 +770,7 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine
 		ImGui_ImplOpenGL3_RenderDrawData(GetDrawData());
 		glfwSwapBuffers(window);
 	}
+
 	// Cleanup
 	engine->drop();
 	ImGui_ImplOpenGL3_Shutdown();
