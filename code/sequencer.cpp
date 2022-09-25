@@ -18,6 +18,7 @@ namespace ImGui
     void MyFunction(const char* name, const MyMatrix44& v);
 }
 */
+
 enum : char{
 	state_empty  = 0,
 	state_start  = 1,
@@ -730,7 +731,9 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine
 	CreateContext();
 	ImGui_ImplGlfw_InitForOpenGL(window, true);
 	ImGui_ImplOpenGL3_Init("#version 130");
-	GetIO().Fonts->AddFontFromFileTTF("../Lucida Console Regular.ttf", FONT_SIZE);
+	auto io = GetIO();
+	io.Fonts->AddFontFromFileTTF("../Lucida Console Regular.ttf", FONT_SIZE);
+	io.IniFilename = NULL;
 	
 	ImGuiStyle& style = GetStyle();
 	style.WindowBorderSize = 0;
