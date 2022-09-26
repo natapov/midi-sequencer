@@ -11,13 +11,6 @@
 
 using namespace ImGui;
 using namespace irrklang;
-//---- Tip: You can add extra functions within the ImGui:: namespace, here or in your own headers files.
-/*
-namespace ImGui
-{
-    void MyFunction(const char* name, const MyMatrix44& v);
-}
-*/
 
 enum : char{
 	state_empty  = 0,
@@ -42,10 +35,8 @@ enum : Note{
 	Do  = 0,
 };
 
-const short SCALE_MASK = 0xfff;
-
 // CONFIG
-// these are mostly sizes of diffrent ui elements 
+// these are mostly sizes of different ui elements 
 const int CELLS_PER_BEAT = 8;//this is the minimun note size a beat is typically 1/4 so if CELLS_PER_BEAT = 8 the minimum note is 1/32
 
 const int CELL_GRID_NUM_H = 35;
@@ -62,7 +53,7 @@ const int GRID_W = CELL_SIZE_W * CELL_GRID_NUM_W + 1;
 const int GRID_H = CELL_SIZE_H * CELL_GRID_NUM_H;
 const int WINDOW_W = GRID_W + SIDE_BAR;
 const int WINDOW_H = GRID_H + TOP_BAR;
-const int LINE_W = 1; //this is multiplied by two since line seperates two cells symetrically
+const int LINE_W = 1; //this is multiplied by two since a line seperates two cells symetrically
 
 const int BPM_BOX_WIDTH   = 105;
 const int SCALE_BOX_WIDTH = 300;
@@ -91,6 +82,9 @@ const ImGuiWindowFlags MAIN_WINDOW_FLAGS =  ImGuiWindowFlags_NoScrollWithMouse |
 const char* regular_note_names[12] = {"DO", "DO#", "RE", "RE#", "MI", "FA", "FA#", "SO", "SO#", "LA", "LA#", "SI"};
 const char* english_note_names[12] = {"C",  "C#",  "D",  "D#",  "E",  "F",  "F#",  "G",  "G#",  "A",  "A#",  "B" };
 
+bool english_notes = false; //user-modifiable variable
+const char** note_names = english_notes ? english_note_names : regular_note_names;
+
 const int HIGHEST_NOTE = So_; 
 const int HIGHEST_NOTE_OCTAVE = 5;
 
@@ -107,7 +101,7 @@ char buff[300];
 typedef double Time;
 Time elapsed = 0; //Seconds played since last loop
 
-int last_played_grid_col;// this is only global because it needs to be reset in reset()
+int last_played_grid_col;//this is only global because it needs to be reset in reset()
 int playhead_offset = 0; //The playhead is the line that moves when we press play, this is it's location on the grid
 
 // Internal state variables
@@ -124,15 +118,12 @@ bool is_grid_hovered = false;
 int bpm = 180; //beats per minute
 int grid_note_length = 8; // the size of notes the user is currently drawing, in cells
 int note_length_idx  = 2;
-int beats_per_bar = 4; // the time signiture of the music
-bool playing = false;
-bool predict_mode = true;
-bool snap_to_grid = true;
-bool english_notes = false;
-bool auto_loop = true;
+int beats_per_bar    = 4; // the time signiture of the music
+bool playing         = false;
+bool predict_mode    = true;
+bool snap_to_grid    = true;
+bool auto_loop       = true;
 bool shortcut_window = false;
-
-const char** note_names = english_notes ? english_note_names : regular_note_names;
 
 //selector variables
 Note selected_base_note = -1; 
@@ -153,7 +144,8 @@ inline bool scale_contains(short container, short contained){
 }
 
 short scale_rotate(short s, Note base){
-	short looped_bits = SCALE_MASK & (s<<base);
+	const short scale_mask = 0xfff;
+	short looped_bits = scale_mask & (s<<base);
 	s = s>>(12-base);
 	return s|looped_bits;
 }
@@ -217,7 +209,6 @@ void update_elapsed_time(){
 	last = current;
 
 	playhead_offset = time_to_pixels(elapsed);
-
 	const int cells_in_bar = CELLS_PER_BEAT * beats_per_bar;
 	const int max_bar = (max_x_cell/cells_in_bar + 1) * cells_in_bar;
 	if(max_x_cell == -1 || !auto_loop)
@@ -349,111 +340,118 @@ void make_scale_prediction(){
 	}
 }
 
+inline void play_notes(){
+	const int current = (playhead_offset / CELL_SIZE_W) % CELL_GRID_NUM_W;
+	for(int x = last_played_grid_col; x != current; x = (x+1)%CELL_GRID_NUM_W)
+		for(int y = 0; y < CELL_GRID_NUM_H; y++)
+			if(cell[y][x] == state_start)
+				engine->play2D(snd_src[y]);				
+	last_played_grid_col = current;
+}
+
 void update_grid(){
-	if(is_grid_hovered){
-		int mouse_scroll= GetIO().MouseWheel;
-		if(mouse_scroll){
-			note_length_idx -= mouse_scroll;
-			if(note_length_idx < 0) note_length_idx = 0;
-			if(note_length_idx > 4) note_length_idx = 4;
-			grid_note_length = (CELLS_PER_BEAT * 4) >> note_length_idx;
-		}
-		
-		//get grid co-ordinates
-		ImVec2 mouse_pos = GetMousePos();
-		int y = (mouse_pos.y - TOP_BAR)  / CELL_SIZE_H;
-		int x = (mouse_pos.x - SIDE_BAR) / CELL_SIZE_W;
-		
-		//resizing / moving note variables 
-		static bool resizing_note = false;
-		static int  last_x;
-		static int  last_y;
-		static bool moving_note = false;
-		static int  cells_to_left;
-		static int  total_length;
-		
-		//reset mouse cursor / state
-		if(!IsMouseDown(0)){
-			resizing_note = false;
-			moving_note = false;
-		}
-		
-		if((cell[y][x] == state_middle) && !moving_note && !resizing_note){
-			if(IsMouseDown(0)){
-				last_x = x;
-				last_y = y;
-				moving_note = true;
-				cells_to_left = 0;		
-				int cur_x = x;
-				while(cell[y][cur_x] != state_start){
-					cur_x--;
-					cells_to_left++;
-				}
-				assert(cell[y][x-cells_to_left] == state_start);
-				cur_x = x;
-				total_length = cells_to_left + 1;
-				while(cell[y][cur_x] != state_end){
-					cur_x++;
-					total_length++;
-				}
+	int mouse_scroll= GetIO().MouseWheel;
+	if(mouse_scroll){
+		note_length_idx -= mouse_scroll;
+		if(note_length_idx < 0) note_length_idx = 0;
+		if(note_length_idx > 4) note_length_idx = 4;
+		grid_note_length = (CELLS_PER_BEAT * 4) >> note_length_idx;
+	}
+	
+	//get grid co-ordinates
+	ImVec2 mouse_pos = GetMousePos();
+	int y = (mouse_pos.y - TOP_BAR)  / CELL_SIZE_H;
+	int x = (mouse_pos.x - SIDE_BAR) / CELL_SIZE_W;
+	
+	//resizing / moving note variables 
+	static bool resizing_note = false;
+	static int  last_x;
+	static int  last_y;
+	static bool moving_note = false;
+	static int  cells_to_left;
+	static int  total_length;
+	
+	//reset mouse cursor / state
+	if(!IsMouseDown(0)){
+		resizing_note = false;
+		moving_note = false;
+	}
+	
+	if((cell[y][x] == state_middle) && !moving_note && !resizing_note){
+		if(IsMouseDown(0)){
+			last_x = x;
+			last_y = y;
+			moving_note = true;
+			cells_to_left = 0;		
+			int cur_x = x;
+			while(cell[y][cur_x] != state_start){
+				cur_x--;
+				cells_to_left++;
+			}
+			assert(cell[y][x-cells_to_left] == state_start);
+			cur_x = x;
+			total_length = cells_to_left + 1;
+			while(cell[y][cur_x] != state_end){
+				cur_x++;
+				total_length++;
 			}
 		}
-		//set mouse dragging/resizing state
-		else if((cell[y][x] & (state_end|state_start)) && !resizing_note && !moving_note){
-			if(!IsAnyMouseDown())
-				SetMouseCursor(ImGuiMouseCursor_ResizeEW);
-			if(IsMouseClicked(0)){
-				resizing_note = true;
-				last_x = x;
-				last_y = y;
-			}
-		}
-
-		if(moving_note && (last_x != x || last_y != y)){
-			int note_start_x = snap_to_grid ? snap(x - cells_to_left) : x - cells_to_left;
-
-			//we do nothing if the note hasn't actually moved
-			if(!snap_to_grid || note_start_x != last_x - cells_to_left || last_y != y){
-				// we erase the note first so it consider itself when checking for space
-				erase_note(last_y, last_x);
-				if(place_note(y, note_start_x, total_length)){
-					last_x = note_start_x + cells_to_left; //this keeps the values consistent when snapping to grid;
-					last_y = y;
-					need_prediction_update = true;
-				}
-				else{
-					//undo note erase
-					auto res = place_note(last_y, last_x - cells_to_left, total_length);
-					assert(res);
-				}
-			}
-		}
-
-		else if(resizing_note){
+	}
+	//set mouse dragging/resizing state
+	else if((cell[y][x] & (state_end|state_start)) && !resizing_note && !moving_note){
+		if(!IsAnyMouseDown())
 			SetMouseCursor(ImGuiMouseCursor_ResizeEW);
-			last_x = resize_note(last_y, last_x, x);
+		if(IsMouseClicked(0)){
+			resizing_note = true;
+			last_x = x;
+			last_y = y;
 		}
+	}
 
-		//erase when right mouse button is pressed
-		else if(IsMouseDown(1) && cell[y][x]){
-			erase_note(y,x);
-			need_prediction_update = true;
-		}
+	if(moving_note && (last_x != x || last_y != y)){
+		int note_start_x = snap_to_grid ? snap(x - cells_to_left) : x - cells_to_left;
 
-		//place note
-		else if(IsMouseClicked(0) && !cell[y][x] && !IsMouseDown(1)) {
-			int last_x = snap_to_grid ? snap(x) : x;
-			if(place_note(y, last_x, grid_note_length)){
+		//we do nothing if the note hasn't actually moved
+		if(!snap_to_grid || note_start_x != last_x - cells_to_left || last_y != y){
+			// we erase the note first so it consider itself when checking for space
+			erase_note(last_y, last_x);
+			if(place_note(y, note_start_x, total_length)){
+				last_x = note_start_x + cells_to_left; //this keeps the values consistent when snapping to grid;
+				last_y = y;
 				need_prediction_update = true;
-				if(!playing)
-					engine->play2D(snd_src[y]);
 			}
+			else{
+				//undo note erase
+				auto res = place_note(last_y, last_x - cells_to_left, total_length);
+				assert(res);
+			}
+		}
+	}
+
+	else if(resizing_note){
+		SetMouseCursor(ImGuiMouseCursor_ResizeEW);
+		last_x = resize_note(last_y, last_x, x);
+	}
+
+	//erase when right mouse button is pressed
+	else if(IsMouseDown(1) && cell[y][x]){
+		erase_note(y,x);
+		need_prediction_update = true;
+	}
+
+	//place note
+	else if(IsMouseClicked(0) && !cell[y][x] && !IsMouseDown(1)) {
+		const int first_x = snap_to_grid ? snap(x) : x;
+		if(place_note(y, first_x, grid_note_length)){
+			need_prediction_update = true;
+			if(!playing)
+				engine->play2D(snd_src[y]);
 		}
 	}
 }
 
 inline void handle_keyboard_input(){
-	if(IsKeyPressed(ImGuiKey_Space)) playing = !playing;
+	if(IsKeyPressed(ImGuiKey_Space))  playing = !playing;
 	if(IsKeyPressed(ImGuiKey_Backspace)){
 		playing = false;
 		reset();
@@ -467,11 +465,6 @@ inline void handle_keyboard_input(){
 		IsKeyPressed(ImGuiKey_RightShift, false) || 
 		IsKeyReleased(ImGuiKey_RightShift)       ){
 		snap_to_grid = !snap_to_grid;
-	}		
-
-	if(predict_mode && need_prediction_update){
-		make_scale_prediction();
-		need_prediction_update = false;
 	}
 }
 
@@ -481,6 +474,8 @@ void draw_one_frame(){
 	PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0,0)); 
 	Begin("main window", NULL, MAIN_WINDOW_FLAGS);
 	PopStyleVar();
+	ImDrawList* draw_list = GetWindowDrawList();
+
 	{// TOP BAR
 		SetCursorPos(ImVec2(0,MENU_BAR));
 		if(BeginMainMenuBar()){
@@ -536,7 +531,7 @@ void draw_one_frame(){
 		}
 		if(MyButton("Play"))  playing = true;
 		SameLine();
-		if(MyButton("Pause"))  playing = false;
+		if(MyButton("Pause")) playing = false;
 		SameLine();
 		if(MyButton("Stop")){
 			playing = false;
@@ -627,18 +622,10 @@ void draw_one_frame(){
 		}
 	}
 
-	PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0,0)); 
-
-	{// NOTE COLOUMN
-		PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(0,0));
+	{// Grid Background
 		SetCursorPos(ImVec2(0, TOP_BAR));
-		ImDrawList* draw_list = GetWindowDrawList();
 		for(int i = 0; i < CELL_GRID_NUM_H; i++){
-			Note note = row_to_note(i);
-			int octave = HIGHEST_NOTE_OCTAVE - i/12;
-			const char* name = NULL;
-			name = note_names[note];
-			
+			const Note note = row_to_note(i);
 			ImVec4 color;
 			//draw grid background
 			if(predict_mode && !is_scale_selected()){
@@ -650,17 +637,10 @@ void draw_one_frame(){
 			}
 			else if(scale_has_note(scale_rotate(scale[selected_scale_idx].notes, selected_base_note), note))
 				draw_list->AddRectFilled(ImVec2(SIDE_BAR, TOP_BAR + CELL_SIZE_H*i), ImVec2(SIDE_BAR + GRID_W, TOP_BAR + CELL_SIZE_H*(i+1) - 1), GRID_BG_COL);
-			sprintf(buff, "%s%d", name, octave);
-			PushStyleColor(ImGuiCol_Text, BLACK_COL);
-			PushStyleColor(ImGuiCol_Header, !is_sharp(note) ? BLACK_NOTE_COL : WHITE_NOTE_COL);
-			TextBox(buff, ImVec2(SIDE_BAR, CELL_SIZE_H));
-			PopStyleColor(2);
 		}
-		PopStyleVar();
 	}
 
 	{// GRID LINES + PLAYHEAD
-		ImDrawList* draw_list = GetWindowDrawList();
 		for(int i = 0; i<= CELL_GRID_NUM_H; i++)
 			draw_list->AddRectFilled(ImVec2(0, TOP_BAR + CELL_SIZE_H*i - LINE_W), ImVec2(GRID_W + SIDE_BAR, TOP_BAR + CELL_SIZE_H*i + LINE_W), BEAT_LINE_COL);		
 		for(int i = 0; i<= CELL_GRID_NUM_W; i++){
@@ -672,29 +652,33 @@ void draw_one_frame(){
 	}
 
 	{// NOTE GRID
+		SetCursorPos(ImVec2(0,TOP_BAR));
 		PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(0,0));
-		PushStyleColor(ImGuiCol_Header, GRID_NOTE_COL);
-		PushStyleColor(ImGuiCol_Border, NOTE_BORDER_COL);
-		SetCursorPos(ImVec2(SIDE_BAR,TOP_BAR));
+		PushStyleColor(ImGuiCol_Text, BLACK_COL);
 		max_x_cell = -1;
 		for(int y = 0; y < CELL_GRID_NUM_H; y++){
 			for(int x = 0; x < CELL_GRID_NUM_W; x++){
-				if(x > 0)  SameLine();
-				else  SetCursorPos(ImVec2(SIDE_BAR, TOP_BAR + y*CELL_SIZE_H));
-				Cell(cell[y][x], ImVec2(CELL_SIZE_W, CELL_SIZE_H), LINE_W);
+				if(x > 0) SameLine();
+				else{
+					const Note note = row_to_note(y);
+					const int octave = HIGHEST_NOTE_OCTAVE - y/12;
+					const ImU32 box_col = !is_sharp(note) ? BLACK_NOTE_COL : WHITE_NOTE_COL;
+					sprintf(buff, "%s%d", note_names[note], octave);
+					TextBox(buff, ImVec2(SIDE_BAR, CELL_SIZE_H-2), ImVec2(0,0), box_col);
+					SameLine();
+				}
+				Cell(cell[y][x], ImVec2(CELL_SIZE_W, CELL_SIZE_H), LINE_W, GRID_NOTE_COL, NOTE_BORDER_COL);
 				if(cell[y][x] && x > max_x_cell){
 					max_x_cell = x;
 				}
 			}
 		}
 		PopStyleVar();
-		PopStyleColor(2);
-
+		PopStyleColor();
 		//draw playhead
 		const int playhead = SIDE_BAR + playhead_offset;
 		GetWindowDrawList()->AddRectFilled(ImVec2(playhead - LINE_W, TOP_BAR), ImVec2(playhead + LINE_W, GRID_H + TOP_BAR), PLAYHEAD_COL);
 	}
-	PopStyleVar();// reset window padding
 
 	//we use a invisible button to tell us when to capture mouse input for the grid
 	SetCursorPos(ImVec2(SIDE_BAR,TOP_BAR));
@@ -707,19 +691,18 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine
 	engine = createIrrKlangDevice();
 	if(!engine)      return -1;
 	if(!glfwInit())  return -1;
-	GLFWwindow* window = glfwCreateWindow(WINDOW_W, WINDOW_H, "Project A", NULL, NULL);
+	GLFWwindow* window = glfwCreateWindow(WINDOW_W, WINDOW_H, "Sequencer", NULL, NULL);
+	glfwSetWindowAttrib(window, GLFW_RESIZABLE, GLFW_FALSE);
 	if(!window)  return -1;
 	glfwMakeContextCurrent(window);
-	glfwSwapInterval(1); // Enable vsync
-
-	// Dear ImGui setup
+	glfwSwapInterval(1); //Enable vsync
 	CreateContext();
 	ImGui_ImplGlfw_InitForOpenGL(window, true);
 	ImGui_ImplOpenGL3_Init("#version 130");
 	ImGuiIO& io = GetIO();
 	io.Fonts->AddFontFromFileTTF("../Lucida Console Regular.ttf", FONT_SIZE);
-	io.IniFilename = NULL;
- 
+	io.IniFilename = NULL;//don't use imgui.ini file
+
 	ImGuiStyle& style = GetStyle();
 	style.WindowBorderSize = 0;
 
@@ -733,33 +716,26 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine
 	engine->stopAllSoundsOfSoundSource(snd_src[0]);
 	
 	// Main loop
-	while(!glfwWindowShouldClose(window)) {
+	while(!glfwWindowShouldClose(window)){
 		glfwPollEvents();
 		ImGui_ImplOpenGL3_NewFrame();
 		ImGui_ImplGlfw_NewFrame();
 		NewFrame();
-		
+
 		handle_keyboard_input();
-		update_elapsed_time();
-
-		//play notes
-		if(playing){
-			int current = (playhead_offset / CELL_SIZE_W) % CELL_GRID_NUM_W;
-			for(int x = last_played_grid_col; x != current; x = (x+1)%CELL_GRID_NUM_W)
-				for(int y = 0; y < CELL_GRID_NUM_H; y++)
-					if(cell[y][x] == state_start)
-						engine->play2D(snd_src[y]);				
-			last_played_grid_col = current;
+		if(is_grid_hovered)  update_grid();
+		if(predict_mode && need_prediction_update){
+			make_scale_prediction();
+			need_prediction_update = false;
 		}
+		update_elapsed_time();
+		if(playing)  play_notes();
 		draw_one_frame();
-		update_grid();
-
-		// Rendering
+		
 		Render();
 		ImGui_ImplOpenGL3_RenderDrawData(GetDrawData());
 		glfwSwapBuffers(window);
 	}
-
 	// Cleanup
 	engine->drop();
 	ImGui_ImplOpenGL3_Shutdown();
