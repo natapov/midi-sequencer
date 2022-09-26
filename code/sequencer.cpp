@@ -27,7 +27,7 @@ enum : char{
 };
 
 typedef int Note;
-enum{
+enum : Note{
 	Si  = 11,
 	La_ = 10,
 	La  = 9,
@@ -80,8 +80,13 @@ const ImU32 BLACK_NOTE_COL  = IM_COL32(250, 250, 250, 255);
 const ImU32 WHITE_NOTE_COL  = IM_COL32(10 , 10 , 10 , 255);
 const ImU32 GRID_BG_COL     = IM_COL32(75 , 100, 150, 255);
 const ImU32 NOTE_BORDER_COL = IM_COL32(200, 200, 100, 255);
+
 // FLAGS
-const ImGuiWindowFlags MAIN_WINDOW_FLAGS = ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove;
+const ImGuiWindowFlags MAIN_WINDOW_FLAGS =  ImGuiWindowFlags_NoScrollWithMouse | 
+											ImGuiWindowFlags_NoBringToFrontOnFocus | 
+											ImGuiWindowFlags_NoDecoration | 
+											ImGuiWindowFlags_NoResize | 
+											ImGuiWindowFlags_NoMove;
 
 const char* regular_note_names[12] = {"DO", "DO#", "RE", "RE#", "MI", "FA", "FA#", "SO", "SO#", "LA", "LA#", "SI"};
 const char* english_note_names[12] = {"C",  "C#",  "D",  "D#",  "E",  "F",  "F#",  "G",  "G#",  "A",  "A#",  "B" };
@@ -100,20 +105,19 @@ char buff[300];
 
 //We use glfw for "Time", glfwGetTime() return a double of seconds since startup 
 typedef double Time;
-Time elapsed  = 0; //Seconds played since last loop
-Time loop_time = 0;
+Time elapsed = 0; //Seconds played since last loop
 
 int last_played_grid_col;// this is only global because it needs to be reset in reset()
 int playhead_offset = 0; //The playhead is the line that moves when we press play, this is it's location on the grid
 
-// State variables
+// Internal state variables
 int drawn_notes[12]; //The number of notes of each type currently on the grid
 int number_of_drawn_notes = 0;
 int note_histogram[12]; //Sum total of each note in all the matching scales
 int matching_scales_count = 0;
+int max_x_cell;
 char cell[CELL_GRID_NUM_H][CELL_GRID_NUM_W]; //here we store the currently drawn notes on the grid
 bool need_prediction_update = true;
-int max_x_cell = 0;
 bool is_grid_hovered = false;
 
 // User-modifiable variables:
@@ -141,7 +145,7 @@ inline bool is_sharp(Note note){
 
 inline bool scale_has_note(short scale, Note note){
 	assert((0xf000 & scale) == 0);
-	return scale & (1 << note);
+	return scale & (1<<note);
 }
 
 inline bool scale_contains(short container, short contained){
@@ -149,8 +153,8 @@ inline bool scale_contains(short container, short contained){
 }
 
 short scale_rotate(short s, Note base){
-	short looped_bits = SCALE_MASK & (s << base);
-	s = (s>>(12-base));
+	short looped_bits = SCALE_MASK & (s<<base);
+	s = s>>(12-base);
 	return s|looped_bits;
 }
 
@@ -183,7 +187,7 @@ void zero_array(char arr[CELL_GRID_NUM_H][CELL_GRID_NUM_W]){
 }
 
 inline int time_to_pixels(Time t){
-	return (int) ((t * bpm * CELL_SIZE_W*CELLS_PER_BEAT ) / 60.0);
+	return (int) ((t * bpm * CELL_SIZE_W * CELLS_PER_BEAT) / 60.0);
 }
 
 inline Time pixels_to_time(int p){
@@ -215,7 +219,7 @@ void update_elapsed_time(){
 	playhead_offset = time_to_pixels(elapsed);
 
 	const int cells_in_bar = CELLS_PER_BEAT * beats_per_bar;
-	const int max_bar = ((max_x_cell / cells_in_bar) + 1) * cells_in_bar;
+	const int max_bar = (max_x_cell/cells_in_bar + 1) * cells_in_bar;
 	if(max_x_cell == -1 || !auto_loop)
 		loop_time = pixels_to_time(GRID_W);
 	else
@@ -227,13 +231,13 @@ void update_elapsed_time(){
 
 int resize_note(int y, int old_x, int cur_x){
 	assert(cell[y][old_x] & (state_end|state_start));
-	if(cur_x == old_x) return old_x;
+	if(cur_x == old_x)  return old_x;
 	int new_x = -1, i;
-	bool is_end = cell[y][old_x] & (state_end);
+	bool is_end = cell[y][old_x] & state_end;
 
 	if(snap_to_grid){
 		cur_x = snap(cur_x) + grid_note_length;
-		if(is_end) cur_x -=1;
+		if(is_end)  cur_x -=1;
 	}
 	for(i = old_x - 1; i >= cur_x; i--){
 		if(cell[y][i] & (state_start|state_end)){
@@ -263,17 +267,15 @@ int resize_note(int y, int old_x, int cur_x){
 		for(i = old_x; i < new_x; i++)
 			cell[y][i] = state_empty;
 	}
-	
 	cell[y][new_x] = is_end ? state_end : state_start;
 	return new_x;
 }
 
 bool place_note(int y, int x, int note_length){
 	if(x<0) return false;
-	for(int i = 0; i < note_length; i++){
+	for(int i = 0; i < note_length; i++)
 		if(x+i >= CELL_GRID_NUM_W || cell[y][x+i] != state_empty)
 			return false;
-	}
 	if(!drawn_notes[row_to_note(y)])
 		number_of_drawn_notes += 1;
 	drawn_notes[row_to_note(y)] += 1;
@@ -315,15 +317,13 @@ void erase_note(int y, int x){
 		}
 	}
 	cell[y][x] = state_empty;
-
 }
 
 void select_scale(int n){
 	selected_scale_idx = n;
 	need_prediction_update = true;
-	if((scale[n].is_matching & (1 << selected_base_note)) == 0){
+	if(scale[n].is_matching & (1<<selected_base_note) == 0)
 		selected_base_note = -1;
-	}
 }
 
 void make_scale_prediction(){
@@ -331,7 +331,7 @@ void make_scale_prediction(){
 	for(auto& it : note_histogram) it = 0;
 	matching_scales_count = 0;
 	for(int j = 0; j < 12; j++){
-		short note_mask = j ? 1 << (12 - j) : 1;
+		short note_mask = j ? 1<<(12 - j) : 1;
 		for(int i = 0; i < NUM_SCALES; i++){
 			if(scale_contains(scale[i].notes, current_notes)){
 				scale[i].is_matching |= note_mask;
@@ -343,10 +343,7 @@ void make_scale_prediction(){
 							note_histogram[(12 + k - j) % 12] += 1;
 				}
 			}
-			else{
-				scale[i].is_matching &= (0xfff - note_mask);
-			}
-
+			else  scale[i].is_matching &= (0xfff - note_mask);
 		}
 		current_notes = scale_rotate(current_notes, 1);		
 	}
@@ -359,7 +356,7 @@ void update_grid(){
 			note_length_idx -= mouse_scroll;
 			if(note_length_idx < 0) note_length_idx = 0;
 			if(note_length_idx > 4) note_length_idx = 4;
-			grid_note_length = (CELLS_PER_BEAT*4) >> note_length_idx;
+			grid_note_length = (CELLS_PER_BEAT * 4) >> note_length_idx;
 		}
 		
 		//get grid co-ordinates
@@ -381,7 +378,7 @@ void update_grid(){
 			moving_note = false;
 		}
 		
-		if((cell[y][x] == (state_middle)) && !moving_note && !resizing_note){
+		if((cell[y][x] == state_middle) && !moving_note && !resizing_note){
 			if(IsMouseDown(0)){
 				last_x = x;
 				last_y = y;
@@ -448,7 +445,6 @@ void update_grid(){
 			int last_x = snap_to_grid ? snap(x) : x;
 			if(place_note(y, last_x, grid_note_length)){
 				need_prediction_update = true;
-
 				if(!playing)
 					engine->play2D(snd_src[y]);
 			}
@@ -540,7 +536,7 @@ void draw_one_frame(){
 		}
 		if(MyButton("Play"))  playing = true;
 		SameLine();
-		if(MyButton("Pause")) playing = false;
+		if(MyButton("Pause"))  playing = false;
 		SameLine();
 		if(MyButton("Stop")){
 			playing = false;
@@ -575,38 +571,31 @@ void draw_one_frame(){
 		SameLine();
 
 		const char* scale_preview_value;
-		
-		if(selected_scale_idx != -1){
-			scale_preview_value = scale[selected_scale_idx].name;
-		}
+		if(selected_scale_idx != -1)
+			scale_preview_value = scale[selected_scale_idx].name;	
 		else if(predict_mode){
 			sprintf(buff, "%d Possible scales", matching_scales_count);
 			scale_preview_value = buff;
 		}
-		else{
-			scale_preview_value = "Select scale";
-		}
-
+		else  scale_preview_value = "Select scale";
+		
 		SetNextItemWidth(SCALE_BOX_WIDTH);
 		if(BeginCombo("Scale", scale_preview_value, 0)){
 			for(int n = 0; n < NUM_SCALES; n++){
 				const bool is_selected = (selected_scale_idx == n);
 				if(predict_mode){
-					if((selected_base_note == -1 && scale[n].is_matching) || (scale[n].is_matching & 1<<selected_base_note)){
+					if((selected_base_note == -1 && scale[n].is_matching) || (scale[n].is_matching & (1<<selected_base_note))){
 						if(scale[n].number_of_notes == number_of_drawn_notes){
 							sprintf(buff, "%s [Exact match]", scale[n].name);
-							if(Selectable(buff, is_selected)){
+							if(Selectable(buff, is_selected))
 								select_scale(n);
-							}
 						}
-						else if(Selectable(scale[n].name, is_selected)){
-							select_scale(n);
-						}
+						else if(Selectable(scale[n].name, is_selected))
+							select_scale(n);			
 					}
 				}
-				else if(Selectable(scale[n].name, is_selected)){
+				else if(Selectable(scale[n].name, is_selected))
 					select_scale(n);
-				}
 			}
 			EndCombo();
 		}
@@ -629,7 +618,7 @@ void draw_one_frame(){
 		if(InputInt("BPM", &bpm)){
 			if(bpm > 999) bpm = 999;
 			if(bpm < 10)  bpm =  10;
-			elapsed  = pixels_to_time(playhead_offset); //how much time _would have_ passed had we gotten to this pixel at current bpm
+			elapsed = pixels_to_time(playhead_offset); //how much time _would have_ passed had we gotten to this pixel at current bpm
 		}
 		SameLine();
 		SetNextItemWidth(BPM_BOX_WIDTH*4);
@@ -648,7 +637,6 @@ void draw_one_frame(){
 			Note note = row_to_note(i);
 			int octave = HIGHEST_NOTE_OCTAVE - i/12;
 			const char* name = NULL;
-			assert(note <= Si && note>= Do);
 			name = note_names[note];
 			
 			ImVec4 color;
@@ -673,12 +661,11 @@ void draw_one_frame(){
 
 	{// GRID LINES + PLAYHEAD
 		ImDrawList* draw_list = GetWindowDrawList();
-		for(int i = 0; i<= CELL_GRID_NUM_H; i++){
-			draw_list->AddRectFilled(ImVec2(0, TOP_BAR + CELL_SIZE_H*i - LINE_W), ImVec2(GRID_W + SIDE_BAR, TOP_BAR + CELL_SIZE_H*i + LINE_W), BEAT_LINE_COL);
-		}
+		for(int i = 0; i<= CELL_GRID_NUM_H; i++)
+			draw_list->AddRectFilled(ImVec2(0, TOP_BAR + CELL_SIZE_H*i - LINE_W), ImVec2(GRID_W + SIDE_BAR, TOP_BAR + CELL_SIZE_H*i + LINE_W), BEAT_LINE_COL);		
 		for(int i = 0; i<= CELL_GRID_NUM_W; i++){
 			if(i % grid_note_length) continue;
-			int cells_per_bar = CELLS_PER_BEAT * beats_per_bar;
+			const int cells_per_bar = CELLS_PER_BEAT * beats_per_bar;
 			ImU32 color = i % cells_per_bar == 0 ? BAR_LINE_COL : BEAT_LINE_COL;
 			draw_list->AddRectFilled(ImVec2(SIDE_BAR + CELL_SIZE_W*i - LINE_W, TOP_BAR), ImVec2(SIDE_BAR + CELL_SIZE_W*i + LINE_W, GRID_H + TOP_BAR), color);
 		}
@@ -692,8 +679,8 @@ void draw_one_frame(){
 		max_x_cell = -1;
 		for(int y = 0; y < CELL_GRID_NUM_H; y++){
 			for(int x = 0; x < CELL_GRID_NUM_W; x++){
-				if(x > 0) SameLine();
-				else SetCursorPos(ImVec2(SIDE_BAR, TOP_BAR + y*CELL_SIZE_H));
+				if(x > 0)  SameLine();
+				else  SetCursorPos(ImVec2(SIDE_BAR, TOP_BAR + y*CELL_SIZE_H));
 				Cell(cell[y][x], ImVec2(CELL_SIZE_W, CELL_SIZE_H), LINE_W);
 				if(cell[y][x] && x > max_x_cell){
 					max_x_cell = x;
@@ -707,23 +694,21 @@ void draw_one_frame(){
 		const int playhead = SIDE_BAR + playhead_offset;
 		GetWindowDrawList()->AddRectFilled(ImVec2(playhead - LINE_W, TOP_BAR), ImVec2(playhead + LINE_W, GRID_H + TOP_BAR), PLAYHEAD_COL);
 	}
-
 	PopStyleVar();// reset window padding
 
+	//we use a invisible button to tell us when to capture mouse input for the grid
 	SetCursorPos(ImVec2(SIDE_BAR,TOP_BAR));
-	InvisibleButton("grid_overlay", ImVec2(WINDOW_W - SIDE_BAR, WINDOW_H), ImGuiButtonFlags_MouseButtonLeft | ImGuiButtonFlags_MouseButtonRight);
+	InvisibleButton("grid_overlay", ImVec2(WINDOW_W - SIDE_BAR, WINDOW_H), 0);
 	is_grid_hovered = IsItemHovered();
 	End();//main window
 }
 
 int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, int nCmdShow){
 	engine = createIrrKlangDevice();
-	if(!engine) return 1; // error starting up the engine
-
-	// Create window with graphics context
-	if(!glfwInit()) return 1;
+	if(!engine)      return -1;
+	if(!glfwInit())  return -1;
 	GLFWwindow* window = glfwCreateWindow(WINDOW_W, WINDOW_H, "Project A", NULL, NULL);
-	if(!window) return 1;
+	if(!window)  return -1;
 	glfwMakeContextCurrent(window);
 	glfwSwapInterval(1); // Enable vsync
 
@@ -731,10 +716,10 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine
 	CreateContext();
 	ImGui_ImplGlfw_InitForOpenGL(window, true);
 	ImGui_ImplOpenGL3_Init("#version 130");
-	auto io = GetIO();
+	ImGuiIO& io = GetIO();
 	io.Fonts->AddFontFromFileTTF("../Lucida Console Regular.ttf", FONT_SIZE);
 	io.IniFilename = NULL;
-	
+ 
 	ImGuiStyle& style = GetStyle();
 	style.WindowBorderSize = 0;
 
@@ -743,7 +728,7 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine
 		snd_src[i] = engine->addSoundSourceFromFile(buff); 
 	}
 
-	//We "play" a sound to warm to force the files to be paged in (i think). This avoids latency when playing the first sound.
+	//We "play" a sound to force the files to be paged in (i think). This avoids latency when playing the first sound.
 	engine->play2D(snd_src[0]);
 	engine->stopAllSoundsOfSoundSource(snd_src[0]);
 	
@@ -760,19 +745,14 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine
 		//play notes
 		if(playing){
 			int current = (playhead_offset / CELL_SIZE_W) % CELL_GRID_NUM_W;
-			for(int x = last_played_grid_col; x != current; x = (x+1)%CELL_GRID_NUM_W){
-				for(int y = 0; y < CELL_GRID_NUM_H; y++){
+			for(int x = last_played_grid_col; x != current; x = (x+1)%CELL_GRID_NUM_W)
+				for(int y = 0; y < CELL_GRID_NUM_H; y++)
 					if(cell[y][x] == state_start)
-						engine->play2D(snd_src[y]);
-				}
-			}
+						engine->play2D(snd_src[y]);				
 			last_played_grid_col = current;
 		}
-
 		draw_one_frame();
 		update_grid();
-
-		//ShowDemoWindow(NULL);
 
 		// Rendering
 		Render();
