@@ -6467,29 +6467,24 @@ enum : char{
 };
 //todo: bug not selection doesn't work
 
-void ImGui::Cell(char state, const ImVec2& size_arg, int border)
+void ImGui::Cell(char state, const ImVec2& size_arg, int border, ImU32 note_col, ImU32 border_col)
 {
 	ImGuiWindow* window = GetCurrentWindow();
 
 	ImVec2 pos = window->DC.CursorPos;
-	//pos.y += window->DC.CurrLineTextBaseOffset;
 	ItemSize(size_arg, 0.0f);
-
 
 	int left_border = 0;
 	int right_border = 0;
-
 	if(state == 0) return;
 	if(state & state_start) left_border  = border;
 	if(state & state_end)   right_border = border;
-	ImU32 col = GetColorU32(ImGuiCol_Border);
-	window->DrawList->AddRectFilled(pos - ImVec2(left_border, border), pos + size_arg +ImVec2(right_border, border)
-	, col);
-	col = GetColorU32(ImGuiCol_Header);
-	window->DrawList->AddRectFilled(pos + ImVec2(left_border, border), pos + size_arg - ImVec2(right_border, border), col);	
+	window->DrawList->AddRectFilled(pos - ImVec2(left_border, border), pos + size_arg + ImVec2(right_border, border), border_col);
+	window->DrawList->AddRectFilled(pos + ImVec2(left_border, border), pos + size_arg - ImVec2(right_border, border), note_col);
+
 }
 
-void ImGui::TextBox(const char* label, const ImVec2& size_arg, const ImVec2& TextAlignment)
+void ImGui::TextBox(const char* label, const ImVec2& size_arg, const ImVec2& TextAlignment, ImU32 box_col)
 {
 	ImGuiWindow* window = GetCurrentWindow();
 	if (window->SkipItems) return;
@@ -6504,8 +6499,7 @@ void ImGui::TextBox(const char* label, const ImVec2& size_arg, const ImVec2& Tex
 	const bool item_add = ItemAdd(bb, id, NULL, ImGuiItemFlags_None);
 	if (!item_add) return;
 
-	ImU32 col = GetColorU32(ImGuiCol_Header);
-	RenderFrame(bb.Min, bb.Max, col, false, 0.0f);
+	RenderFrame(bb.Min, bb.Max, box_col, false, 0.0f);
 	RenderTextClipped(pos, window->WorkRect.Max, label, NULL, &label_size, TextAlignment, &bb);
 }
 //-------------------------------------------------------------------------
