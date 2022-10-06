@@ -142,56 +142,51 @@ inline void play_sound(int y){
 	pSourceVoice[y]->Start(0);
 }
 
+//the function below assumes 
 void load_audio_data(int i) {
 	sprintf(buff, "../audio/%d.WAV", CELL_GRID_NUM_H - i);
 
-    HANDLE audioFile = CreateFile(buff, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, 0, NULL);
-    assert(audioFile != INVALID_HANDLE_VALUE);
+	HANDLE audioFile = CreateFile(buff, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, 0, NULL);
+	assert(audioFile != INVALID_HANDLE_VALUE);
+	auto ret = SetFilePointer(audioFile, 0, NULL, FILE_BEGIN);
+	assert(ret != INVALID_SET_FILE_POINTER);
 
-    auto ret = SetFilePointer(audioFile, 0, NULL, FILE_BEGIN);
-    assert(ret != INVALID_SET_FILE_POINTER);
+	int chunks_proccessed = 0;
+	DWORD chunkType;
+	DWORD chunkDataSize;
+	DWORD fileFormat;
+	DWORD bytesRead = 0;
 
-    DWORD chunkType;
-    DWORD chunkDataSize;
-    DWORD fileFormat;
-    DWORD bytesRead = 0;
+	ReadFile(audioFile, &chunkType, sizeof(DWORD), &bytesRead, NULL);     // First chunk is always RIFF chunk
+	assert(chunkType == 'FFIR');                                           
+	SetFilePointer(audioFile, sizeof(DWORD), NULL, FILE_CURRENT);         // Total data size (we don't use)
+	ReadFile(audioFile, &fileFormat, sizeof(DWORD), &bytesRead, NULL);    // WAVE format
+	assert(fileFormat == 'EVAW');
 
-    ReadFile(audioFile, &chunkType, sizeof(DWORD), &bytesRead, NULL);     // RIFF chunk
-
-	assert(chunkType == 'FFIR');
-
-    ReadFile(audioFile, &chunkDataSize, sizeof(DWORD), &bytesRead, NULL); // Data size (for all subchunks)
-    ReadFile(audioFile, &fileFormat, sizeof(DWORD), &bytesRead, NULL);    // WAVE format
-
-    assert(fileFormat == 'EVAW');
-
-    ReadFile(audioFile, &chunkType, sizeof(DWORD), &bytesRead, NULL);     // First subchunk (should be 'fmt')
-
-    assert(chunkType == ' tmf');
-
-    ReadFile(audioFile, &chunkDataSize, sizeof(DWORD), &bytesRead, NULL); // Data size for format
-    ReadFile(audioFile, &wfx[i], chunkDataSize, &bytesRead, NULL);        // Wave format struct
-
-    //look for the data chunk in the next 3 chunks (so as not to infinite loop)
-    for(int i = 0; i < 3; i++){
-    	ReadFile(audioFile, &chunkType, sizeof(DWORD), &bytesRead, NULL);     // Next subchunk (should be 'data')
-    	ReadFile(audioFile, &chunkDataSize, sizeof(DWORD), &bytesRead, NULL); // Data size for data
-    	if(chunkType == 'atad')  break;
-    	SetFilePointer(audioFile, chunkDataSize, NULL, FILE_CURRENT);
-    }
-    assert(chunkType == 'atad');
-
-
-    BYTE* audioData = (BYTE*) malloc(chunkDataSize);
-    assert(audioData);
-
-    ReadFile(audioFile, audioData, chunkDataSize, &bytesRead, NULL);      // FINALLY!
-
-    buffer[i].AudioBytes = chunkDataSize;
-    buffer[i].pAudioData = audioData;
-    buffer[i].Flags = XAUDIO2_END_OF_STREAM;
-
-    CloseHandle(audioFile);
+	BYTE* audioData;
+	while(chunks_proccessed < 2){
+		if(!ReadFile(audioFile, &chunkType, sizeof(DWORD), &bytesRead, NULL)) break;
+		ReadFile(audioFile, &chunkDataSize, sizeof(DWORD), &bytesRead, NULL);
+		switch(chunkType){
+		case ' tmf':
+			ReadFile(audioFile, &wfx[i], chunkDataSize, &bytesRead, NULL);        // Wave format struct
+			chunks_proccessed += 1;
+			break;
+		case 'atad':
+			audioData = (BYTE*) malloc(chunkDataSize);
+			assert(audioData);
+			ReadFile(audioFile, audioData, chunkDataSize, &bytesRead, NULL);      // Read actual audio data
+			buffer[i].AudioBytes = chunkDataSize;
+			buffer[i].pAudioData = audioData;
+			buffer[i].Flags = XAUDIO2_END_OF_STREAM;
+			chunks_proccessed += 1;
+			break;
+		default:
+			SetFilePointer(audioFile, chunkDataSize, NULL, FILE_CURRENT);		  //skip this chunk
+		}
+	}
+	assert(chunks_proccessed == 2);
+	CloseHandle(audioFile);
 }
 
 inline bool is_sharp(Note note) {
@@ -393,7 +388,6 @@ void make_scale_prediction() {
 			if(scale_contains(scale[i].notes, current_notes)) {
 				
 				scale[i].is_matching |= note_mask;
-				
 				//note histogram is limited to selected note
 				
 				if(selected_base_note == -1 || selected_base_note == j) {
@@ -729,7 +723,7 @@ void draw_one_frame() {
 		}
 	}
 
-	{// NOTE GRID + LABELSp
+	{// NOTE GRID + LABELS
 		PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(0,0));
 		PushStyleColor(ImGuiCol_Text, BLACK_COL);
 		SetCursorPos(ImVec2(0,TOP_BAR));
@@ -781,28 +775,19 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine
 	io.Fonts->AddFontFromFileTTF("../Lucida Console Regular.ttf", FONT_SIZE);
 	io.IniFilename = NULL;//don't use imgui.ini file
 	/////////////////
-	HRESULT hr;
-	hr = CoInitializeEx(NULL, COINIT_MULTITHREADED);
-	assert(hr >= 0);
+	
+	CoInitializeEx(NULL, COINIT_MULTITHREADED);
 	IXAudio2* pXAudio2 = NULL;
-	hr = XAudio2Create(&pXAudio2, 0, XAUDIO2_DEFAULT_PROCESSOR);
-	assert(hr >= 0);
+	XAudio2Create(&pXAudio2, 0, XAUDIO2_DEFAULT_PROCESSOR);
 	IXAudio2MasteringVoice* pMasterVoice = NULL;
-	hr = pXAudio2->CreateMasteringVoice(&pMasterVoice);
-	assert(hr >= 0);
+	pXAudio2->CreateMasteringVoice(&pMasterVoice);
 
 	ImGuiStyle& style = GetStyle();
 	style.WindowBorderSize = 0;
 
-
 	for(int i = 0; i < CELL_GRID_NUM_H; i++) {
-
 		load_audio_data(i);
-		hr = pXAudio2->CreateSourceVoice(&pSourceVoice[i], &wfx[i]);
-   		assert(hr >= 0);
-
-		//hr = pSourceVoice[i]->SubmitSourceBuffer(&buffer[i]);
-   		//assert(hr >= 0);
+		pXAudio2->CreateSourceVoice(&pSourceVoice[i], &wfx[i]);
 	}
 
 	// Main loop
@@ -811,30 +796,27 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine
 		ImGui_ImplOpenGL3_NewFrame();
 		ImGui_ImplGlfw_NewFrame();
 		NewFrame();
+		draw_one_frame();
 
 		handle_keyboard_input();
-		
 		if(is_grid_hovered)  update_grid();
 		
 		if(predict_mode && need_prediction_update) {
 			make_scale_prediction();
 			need_prediction_update = false;
 		}
-
 		update_elapsed_time();
 		
 		if(playing)  play_notes();
 		
-		draw_one_frame();
 		
-		//ShowDemoWindow();
-
+		
 		Render();
 		ImGui_ImplOpenGL3_RenderDrawData(GetDrawData());
 		glfwSwapBuffers(window);
 	}
 	// Cleanup
-	//todo: free sound files
+	//we don't free sound files because we need them till the end
 	ImGui_ImplOpenGL3_Shutdown();
 	ImGui_ImplGlfw_Shutdown();
 	DestroyContext();
