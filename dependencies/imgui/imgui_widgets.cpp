@@ -6467,22 +6467,7 @@ enum : char{
 };
 //todo: bug not selection doesn't work
 
-void ImGui::Cell(char state, const ImVec2& size_arg, int border, ImU32 note_col, ImU32 border_col)
-{
-	ImGuiWindow* window = GetCurrentWindow();
 
-	ImVec2 pos = window->DC.CursorPos;
-	ItemSize(size_arg, 0.0f);
-
-	int left_border = 0;
-	int right_border = 0;
-	if(state == 0) return;
-	if(state & state_start) left_border  = border;
-	if(state & state_end)   right_border = border;
-	window->DrawList->AddRectFilled(pos - ImVec2(left_border, border), pos + size_arg + ImVec2(right_border, border), border_col);
-	window->DrawList->AddRectFilled(pos + ImVec2(left_border, border), pos + size_arg - ImVec2(right_border, border), note_col);
-
-}
 
 void ImGui::TextBox(const char* label, const ImVec2& size_arg, const ImVec2& TextAlignment, ImU32 box_col)
 {
