@@ -12,6 +12,11 @@
 
 using namespace ImGui;
 
+//todo
+//move matrix representation to lol
+//change everything
+
+
 enum : char{
 	state_empty  = 0,
 	state_start  = 1,
@@ -93,7 +98,6 @@ WAVEFORMATEX                  wfx[CELL_GRID_NUM_H] = {0};
 XAUDIO2_BUFFER             buffer[CELL_GRID_NUM_H] = {0};
 IXAudio2SourceVoice* pSourceVoice[CELL_GRID_NUM_H];
 
-
 //general buffer for temporary strings
 char buff[300]; 
 
@@ -110,6 +114,7 @@ int number_of_drawn_notes = 0;
 int note_histogram[12]; //Sum total of each note in all the matching scales
 int matching_scales_count = 0;
 int max_x_cell;
+
 char cell[CELL_GRID_NUM_H][CELL_GRID_NUM_W]; //here we store the currently drawn notes on the grid
 bool need_prediction_update = true;
 bool is_grid_hovered = false;
@@ -142,7 +147,7 @@ inline void play_sound(int y){
 	pSourceVoice[y]->Start(0);
 }
 
-//the function below assumes 
+// Parses a .wav file and loads it into xaudio2 structs 
 void load_audio_data(int i) {
 	sprintf(buff, "../audio/%d.WAV", CELL_GRID_NUM_H - i);
 
@@ -159,6 +164,7 @@ void load_audio_data(int i) {
 
 	ReadFile(audioFile, &chunkType, sizeof(DWORD), &bytesRead, NULL);     // First chunk is always RIFF chunk
 	assert(chunkType == 'FFIR');                                           
+	
 	SetFilePointer(audioFile, sizeof(DWORD), NULL, FILE_CURRENT);         // Total data size (we don't use)
 	ReadFile(audioFile, &fileFormat, sizeof(DWORD), &bytesRead, NULL);    // WAVE format
 	assert(fileFormat == 'EVAW');
@@ -182,7 +188,7 @@ void load_audio_data(int i) {
 			chunks_proccessed += 1;
 			break;
 		default:
-			SetFilePointer(audioFile, chunkDataSize, NULL, FILE_CURRENT);		  //skip this chunk
+			SetFilePointer(audioFile, chunkDataSize, NULL, FILE_CURRENT);		  // Skip chunk
 		}
 	}
 	assert(chunks_proccessed == 2);
@@ -323,12 +329,15 @@ int resize_note(int y, int old_x, int cur_x) {
 
 bool place_note(int y, int x, int note_length) {
 	if(x<0) return false;
+	
 	for(int i = 0; i < note_length; i++)
 		if(x+i >= CELL_GRID_NUM_W || cell[y][x+i] != state_empty)
 			return false;
+
 	if(!drawn_notes[row_to_note(y)])
 		number_of_drawn_notes += 1;
 	drawn_notes[row_to_note(y)] += 1;
+
 	assert(note_length > 1);
 	cell[y][x] = state_start;
 	for(int i = 1; i < note_length-1; i++)
@@ -645,7 +654,6 @@ void draw_one_frame() {
 			scale_preview_value = buff;
 		}
 		else  scale_preview_value = "Select scale";
-		
 		SetNextItemWidth(SCALE_BOX_WIDTH);
 		if(BeginCombo("Scale", scale_preview_value, 0)) {
 			for(int n = 0; n < NUM_SCALES; n++) {
@@ -715,8 +723,7 @@ void draw_one_frame() {
 	{// GRID LINES + PLAYHEAD
 		for(int i = 0; i<= CELL_GRID_NUM_H; i++)
 			draw_list->AddRectFilled(ImVec2(0, TOP_BAR + CELL_SIZE_H*i - LINE_W), ImVec2(GRID_W + SIDE_BAR, TOP_BAR + CELL_SIZE_H*i + LINE_W), BEAT_LINE_COL);		
-		for(int i = 0; i<= CELL_GRID_NUM_W; i++) {
-			if(i % grid_note_length) continue;
+		for(int i = 0; i<= CELL_GRID_NUM_W; i+=grid_note_length) {
 			const int cells_per_bar = CELLS_PER_BEAT * beats_per_bar;
 			ImU32 color = i % cells_per_bar == 0 ? BAR_LINE_COL : BEAT_LINE_COL;
 			draw_list->AddRectFilled(ImVec2(SIDE_BAR + CELL_SIZE_W*i - LINE_W, TOP_BAR), ImVec2(SIDE_BAR + CELL_SIZE_W*i + LINE_W, GRID_H + TOP_BAR), color);
@@ -774,7 +781,6 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine
 	ImGuiIO& io = GetIO();
 	io.Fonts->AddFontFromFileTTF("../Lucida Console Regular.ttf", FONT_SIZE);
 	io.IniFilename = NULL;//don't use imgui.ini file
-	/////////////////
 	
 	CoInitializeEx(NULL, COINIT_MULTITHREADED);
 	IXAudio2* pXAudio2 = NULL;
@@ -796,7 +802,12 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine
 		ImGui_ImplOpenGL3_NewFrame();
 		ImGui_ImplGlfw_NewFrame();
 		NewFrame();
+
 		draw_one_frame();
+
+		Render();
+		ImGui_ImplOpenGL3_RenderDrawData(GetDrawData());
+		glfwSwapBuffers(window);
 
 		handle_keyboard_input();
 		if(is_grid_hovered)  update_grid();
@@ -808,12 +819,6 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine
 		update_elapsed_time();
 		
 		if(playing)  play_notes();
-		
-		
-		
-		Render();
-		ImGui_ImplOpenGL3_RenderDrawData(GetDrawData());
-		glfwSwapBuffers(window);
 	}
 	// Cleanup
 	//we don't free sound files because we need them till the end
