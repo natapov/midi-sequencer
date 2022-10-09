@@ -56,12 +56,10 @@ bool is_grid_hovered = false;
 
 // User-modifiable variables:
 int bpm = 180; //beats per minute
-int grid_note_length = 8; // the size of notes the user is currently drawing, in cells
 int note_length_idx  = 2;
 int beats_per_bar    = 4; // the time signiture of the music
 bool playing         = false;
 bool predict_mode    = true;
-bool snap_to_grid    = true;
 bool auto_loop       = true;
 bool shortcut_window = false;
 
@@ -184,9 +182,7 @@ inline int row_to_note(int n) {
 	return 11 - ((n + 11 - HIGHEST_NOTE) % 12);
 }
 
-inline int snap(int x) {
-	return (x - x % grid_note_length);
-}
+
 
 
 inline int time_to_pixels(Time t) {
@@ -292,28 +288,31 @@ void update_grid() {
 	
 	//get grid co-ordinates
 	ImVec2 mouse_pos = GetMousePos();
-	int y = (mouse_pos.y - TOP_BAR)  / CELL_SIZE_H;
-	int x = (mouse_pos.x - SIDE_BAR) / CELL_SIZE_W;
-	static Node* moving_note = NULL;
+	int r = (mouse_pos.y - TOP_BAR)  / CELL_SIZE_H;
+	int c = (mouse_pos.x - SIDE_BAR) / CELL_SIZE_W;
 	//erase when right mouse button is pressed
 	
 	if(!IsMouseDown(0)){
 		//resizing_note = false;
-		moving_note = NULL;
+		moving_node_prev = NULL;
 	}
-	if(IsMouseDown(1)) {
-		if(try_erase_note(y,x))
+	else if(moving_node_prev) {
+		if(try_move_note(r, c)){
+			need_prediction_update = true;
+		}
+		assert(moving_node_prev);
+		//if need_prediction_update = true;
+	}
+	else if(IsMouseDown(1)) {
+		if(try_erase_note(r,c))
 			need_prediction_update = true;
 	}
 	
 	//place note
-	else if(IsMouseDown(0) && !moving_note) {
-		const int first_x = snap_to_grid ? snap(x) : x;
-		bool placed_note;
-		moving_note = try_place_note(y, first_x, grid_note_length, placed_note);
-		if(moving_note) {
+	else if(IsMouseClicked(0) && !moving_node_prev) {
+		if(try_place_note(r, c, grid_note_length)) {
 			need_prediction_update = true;
-			if(placed_note)  play_sound(y);
+			play_sound(r);
 		}
 	}
 }

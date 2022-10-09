@@ -16,6 +16,12 @@ enum : Note {
 	Do_ = 1,
 	Do  = 0,
 };
+int grid_note_length = 8; // the size of notes the user is currently drawing, in cells
+bool snap_to_grid    = true;
+
+inline int snap(int x) {
+	return (x - x % grid_note_length);
+}
 
 // CONFIG
 // these are mostly sizes of different ui elements 
