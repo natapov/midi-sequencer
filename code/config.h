@@ -19,9 +19,8 @@ enum : Note {
 int grid_note_length = 8; // the size of notes the user is currently drawing, in cells
 bool snap_to_grid    = true;
 
-inline int snap(int x) {
-	return (x - x % grid_note_length);
-}
+//general buffer for temporary strings
+char buff[300]; 
 
 // CONFIG
 // these are mostly sizes of different ui elements 

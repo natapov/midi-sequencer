@@ -5,12 +5,14 @@
 #include "imgui.h"
 #include "imgui_impl_glfw.h"
 #include "imgui_impl_opengl3.h"
+#include "imgui_internal.h"
 #include "stdio.h"
 #include "GLFW/glfw3.h"
 #include "assert.h"
 #include "scales.h"
-#include "list_of_lists.h"
+#include "grid.h"
 #include "config.h"
+#include "audio.h"
 using namespace ImGui;
 
 //todo
@@ -28,16 +30,7 @@ enum : char {
 bool english_notes = false; //user-modifiable variable
 const char** note_names = english_notes ? english_note_names : regular_note_names;
 
-
 ImDrawList* draw_list;
-
-//Sound library stuff
-WAVEFORMATEX                  wfx[CELL_GRID_NUM_H] = {0};
-XAUDIO2_BUFFER             buffer[CELL_GRID_NUM_H] = {0};
-IXAudio2SourceVoice* pSourceVoice[CELL_GRID_NUM_H];
-
-//general buffer for temporary strings
-char buff[300]; 
 
 //We use glfw for "Time", glfwGetTime() return a double of seconds since startup 
 typedef double Time;
@@ -51,7 +44,7 @@ int note_histogram[12]; //Sum total of each note in all the matching scales
 int matching_scales_count = 0;
 int max_x_cell;
 
-bool need_prediction_update = true;
+bool need_prediction_update = false;
 bool is_grid_hovered = false;
 
 // User-modifiable variables:
@@ -76,17 +69,6 @@ static inline ImVec2 operator-(const ImVec2& lhs, const ImVec2& rhs) {
 	return ImVec2(lhs.x - rhs.x, lhs.y - rhs.y); 
 }
 
-inline void stop_sound(int y){
-	pSourceVoice[y]->Stop(0);
-	pSourceVoice[y]->FlushSourceBuffers();
-}
-
-inline void play_sound(int y) {
-	stop_sound(y);
-	pSourceVoice[y]->SubmitSourceBuffer(&buffer[y], NULL);
-	pSourceVoice[y]->Start(0);
-}
-
 void draw_note(int r, int c, int len) {
 	const ImVec2 pos =  ImVec2(SIDE_BAR + c * CELL_SIZE_W, TOP_BAR + r * CELL_SIZE_H);
 	const ImVec2 size = ImVec2(CELL_SIZE_W * len, CELL_SIZE_H);
@@ -94,54 +76,6 @@ void draw_note(int r, int c, int len) {
 	draw_list->AddRectFilled(pos - ImVec2(nb, nb), pos + size + ImVec2(nb, nb), NOTE_BORDER_COL);
 	draw_list->AddRectFilled(pos + ImVec2(nb, nb), pos + size - ImVec2(nb, nb), NOTE_COL);
 	//todo: AddRectFilledMultiColor
-}
-
-// Parses a .wav file and loads it into xaudio2 structs 
-void load_audio_data(int i) {
-	sprintf(buff, "../audio/%d.WAV", CELL_GRID_NUM_H - i);
-
-	HANDLE audioFile = CreateFile(buff, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, 0, NULL);
-	assert(audioFile != INVALID_HANDLE_VALUE);
-	auto ret = SetFilePointer(audioFile, 0, NULL, FILE_BEGIN);
-	assert(ret != INVALID_SET_FILE_POINTER);
-
-	int chunks_proccessed = 0;
-	DWORD chunkType;
-	DWORD chunkDataSize;
-	DWORD fileFormat;
-	DWORD bytesRead = 0;
-
-	ReadFile(audioFile, &chunkType, sizeof(DWORD), &bytesRead, NULL);     // First chunk is always RIFF chunk
-	assert(chunkType == 'FFIR');                                           
-	
-	SetFilePointer(audioFile, sizeof(DWORD), NULL, FILE_CURRENT);         // Total data size (we don't use)
-	ReadFile(audioFile, &fileFormat, sizeof(DWORD), &bytesRead, NULL);    // WAVE format
-	assert(fileFormat == 'EVAW');
-
-	BYTE* audioData;
-	while(chunks_proccessed < 2){
-		if(!ReadFile(audioFile, &chunkType, sizeof(DWORD), &bytesRead, NULL)) break;
-		ReadFile(audioFile, &chunkDataSize, sizeof(DWORD), &bytesRead, NULL);
-		switch(chunkType){
-		case ' tmf':
-			ReadFile(audioFile, &wfx[i], chunkDataSize, &bytesRead, NULL);        // Wave format struct
-			chunks_proccessed += 1;
-			break;
-		case 'atad':
-			audioData = (BYTE*) malloc(chunkDataSize);
-			assert(audioData);
-			ReadFile(audioFile, audioData, chunkDataSize, &bytesRead, NULL);      // Read actual audio data
-			buffer[i].AudioBytes = chunkDataSize;
-			buffer[i].pAudioData = audioData;
-			buffer[i].Flags = XAUDIO2_END_OF_STREAM;
-			chunks_proccessed += 1;
-			break;
-		default:
-			SetFilePointer(audioFile, chunkDataSize, NULL, FILE_CURRENT);		  // Skip chunk
-		}
-	}
-	assert(chunks_proccessed == 2);
-	CloseHandle(audioFile);
 }
 
 inline bool is_sharp(Note note) {
@@ -181,9 +115,6 @@ inline ImVec4 lerp(ImVec4 a, ImVec4 b, float t) {
 inline int row_to_note(int n) {
 	return 11 - ((n + 11 - HIGHEST_NOTE) % 12);
 }
-
-
-
 
 inline int time_to_pixels(Time t) {
 	return (int) ((t * bpm * CELL_SIZE_W * CELLS_PER_BEAT) / 60.0);
@@ -258,7 +189,7 @@ void make_scale_prediction() {
 							note_histogram[(12 + k - j) % 12] += 1;
 				}
 			}
-			else  scale[i].is_matching &= (0xfff - note_mask);
+			else {scale[i].is_matching &= (0xfff - note_mask);}
 		}
 		current_notes = scale_rotate(current_notes, 1);		
 	}
@@ -277,47 +208,16 @@ inline void play_notes() {
 	last_played_grid_col = current;
 }
 
-void update_grid() {
-	int mouse_scroll= GetIO().MouseWheel;
-	if(mouse_scroll) {
-		note_length_idx -= mouse_scroll;
-		if(note_length_idx < 0) note_length_idx = 0;
-		if(note_length_idx > 4) note_length_idx = 4;
-		grid_note_length = (CELLS_PER_BEAT * 4) >> note_length_idx;
-	}
-	
-	//get grid co-ordinates
-	ImVec2 mouse_pos = GetMousePos();
-	int r = (mouse_pos.y - TOP_BAR)  / CELL_SIZE_H;
-	int c = (mouse_pos.x - SIDE_BAR) / CELL_SIZE_W;
-	//erase when right mouse button is pressed
-	
-	if(!IsMouseDown(0)){
-		//resizing_note = false;
-		moving_node_prev = NULL;
-	}
-	else if(moving_node_prev) {
-		if(try_move_note(r, c)){
-			need_prediction_update = true;
-		}
-		assert(moving_node_prev);
-		//if need_prediction_update = true;
-	}
-	else if(IsMouseDown(1)) {
-		if(try_erase_note(r,c))
-			need_prediction_update = true;
-	}
-	
-	//place note
-	else if(IsMouseClicked(0) && !moving_node_prev) {
-		if(try_place_note(r, c, grid_note_length)) {
-			need_prediction_update = true;
-			play_sound(r);
-		}
-	}
+inline void update_note_legth() {
+	int mouse_scroll = GetIO().MouseWheel;
+	note_length_idx -= mouse_scroll;
+	if(note_length_idx < 0) note_length_idx = 0;
+	if(note_length_idx > 4) note_length_idx = 4;
+	grid_note_length = (CELLS_PER_BEAT * 4) >> note_length_idx;
 }
 
-inline void handle_keyboard_input() {
+inline void handle_input() {
+	if(is_grid_hovered)  update_note_legth();
 	if(IsKeyPressed(ImGuiKey_Space))  playing = !playing;
 	if(IsKeyPressed(ImGuiKey_Backspace)) {
 		playing = false;
@@ -339,7 +239,6 @@ void draw_one_frame(GLFWwindow* window) {
 	ImGui_ImplOpenGL3_NewFrame();
 	ImGui_ImplGlfw_NewFrame();
 	NewFrame();
-
 	SetNextWindowSize(ImVec2(WINDOW_W, WINDOW_H));
 	SetNextWindowPos(ImVec2(0,0));
 	PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0,0)); 
@@ -348,6 +247,7 @@ void draw_one_frame(GLFWwindow* window) {
 	if(!draw_list) {
 		draw_list = GetWindowDrawList();
 	}
+
 
 	{// TOP BAR
 		SetCursorPos(ImVec2(0,MENU_BAR));
@@ -454,7 +354,7 @@ void draw_one_frame(GLFWwindow* window) {
 				const bool is_selected = (selected_scale_idx == n);
 				if(predict_mode) {
 					if((selected_base_note == -1 && scale[n].is_matching) || (scale[n].is_matching & (1<<selected_base_note))) {
-						if(scale[n].number_of_notes == number_of_drawn_notes) {
+						if(scale[n].number_of_notes == total_drawn_notes) {
 							sprintf(buff, "%s [Exact match]", scale[n].name);
 							if(Selectable(buff, is_selected))
 								select_scale(n);
@@ -477,7 +377,7 @@ void draw_one_frame(GLFWwindow* window) {
 		if(Button("Clear All")) {
 			reset();
 			playing = false;
-			number_of_drawn_notes = 0;
+			total_drawn_notes = 0;
 			for(auto& it : drawn_notes) it = 0;
 			need_prediction_update = true;
 		}
@@ -502,7 +402,7 @@ void draw_one_frame(GLFWwindow* window) {
 			ImVec4 color;
 			//draw grid background
 			if(predict_mode && !is_scale_selected()) {
-				if(number_of_drawn_notes) {
+				if(total_drawn_notes) {
 					float density = (float) note_histogram[note] / ((float) matching_scales_count);
 					color = lerp(ColorConvertU32ToFloat4(BLACK_COL), ColorConvertU32ToFloat4(GRID_BG_COL), density);
 					draw_list->AddRectFilled(ImVec2(SIDE_BAR, TOP_BAR + CELL_SIZE_H*i), ImVec2(SIDE_BAR + GRID_W, TOP_BAR + CELL_SIZE_H*(i+1) - 1), ColorConvertFloat4ToU32(color));
@@ -550,21 +450,19 @@ void draw_one_frame(GLFWwindow* window) {
 	}
 	//we use a invisible button to tell us when to capture mouse input for the grid
 	SetCursorPos(ImVec2(SIDE_BAR,TOP_BAR));
+	SetItemUsingMouseWheel();
 	InvisibleButton("grid_overlay", ImVec2(WINDOW_W - SIDE_BAR, WINDOW_H), 0);
 	is_grid_hovered = IsItemHovered();
 	
 	End();//main window
 	
-	Render();
-	ImGui_ImplOpenGL3_RenderDrawData(GetDrawData());
-	glfwSwapBuffers(window);
 }
 
 int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, int nCmdShow) {
 	if(!glfwInit())  return -1;
 	GLFWwindow* window = glfwCreateWindow(WINDOW_W, WINDOW_H, "Sequencer", NULL, NULL);
+	assert(window);
 	glfwSetWindowAttrib(window, GLFW_RESIZABLE, GLFW_FALSE);
-	if(!window)  return -1;
 	glfwMakeContextCurrent(window);
 	glfwSwapInterval(1); //Enable vsync
 	CreateContext();
@@ -574,37 +472,44 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine
 
 	io.Fonts->AddFontFromFileTTF("../Lucida Console Regular.ttf", FONT_SIZE);
 	io.IniFilename = NULL;//don't use imgui.ini file
-	
-	CoInitializeEx(NULL, COINIT_MULTITHREADED);
-	IXAudio2* pXAudio2 = NULL;
-	XAudio2Create(&pXAudio2, 0, XAUDIO2_DEFAULT_PROCESSOR);
-	IXAudio2MasteringVoice* pMasterVoice = NULL;
-	pXAudio2->CreateMasteringVoice(&pMasterVoice);
+
+	init_xaudio();
 
 	ImGuiStyle& style = GetStyle();
 	style.WindowBorderSize = 0;
 
-	for(int i = 0; i < CELL_GRID_NUM_H; i++) {
-		load_audio_data(i);
-		pXAudio2->CreateSourceVoice(&pSourceVoice[i], &wfx[i]);
-	}
-
 	// Main loop
 	while(!glfwWindowShouldClose(window)) {
 		glfwPollEvents();
-
-		draw_one_frame(window);
-
-		handle_keyboard_input();
-		if(is_grid_hovered)  update_grid();
-		
 		if(predict_mode && need_prediction_update) {
 			make_scale_prediction();
 			need_prediction_update = false;
 		}
+		draw_one_frame(window);
+		
+		handle_input();
+		if(is_grid_hovered) {
+			need_prediction_update = try_update_grid();
+		}
+		
+		
 		update_elapsed_time();
 		
 		if(playing)  play_notes();
+		// Debug window
+		Begin("debug");
+		sprintf(buff,"Notes: %d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d", drawn_notes[11], drawn_notes[10], drawn_notes[9], drawn_notes[8], drawn_notes[7], drawn_notes[6], drawn_notes[5], drawn_notes[4], drawn_notes[3], drawn_notes[2], drawn_notes[1], drawn_notes[0]);
+		Text(buff);
+		sprintf(buff,"Note histogram: %d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d", note_histogram[11], note_histogram[10], note_histogram[9], note_histogram[8], note_histogram[7], note_histogram[6], note_histogram[5], note_histogram[4], note_histogram[3], note_histogram[2], note_histogram[1], note_histogram[0]);
+		Text(buff);
+		sprintf(buff,"Number of drawn notes: %d", total_drawn_notes);
+		Text(buff);
+		sprintf(buff,"matching_scales_count: %d", matching_scales_count);
+		Text(buff);
+		End();
+		Render();
+		ImGui_ImplOpenGL3_RenderDrawData(GetDrawData());
+		glfwSwapBuffers(window);
 	}
 	// Cleanup
 	//we don't free sound files because we need them till the end
