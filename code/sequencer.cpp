@@ -65,9 +65,10 @@ static inline ImVec2 operator-(const ImVec2& lhs, const ImVec2& rhs) {
 	return ImVec2(lhs.x - rhs.x, lhs.y - rhs.y); 
 }
 
-void draw_note(int r, int c, int len, ImDrawList* draw_list) {
-	const ImVec2 pos =  ImVec2(SIDE_BAR + c * CELL_SIZE_W, TOP_BAR + r * CELL_SIZE_H);
-	const ImVec2 size = ImVec2(CELL_SIZE_W * len, CELL_SIZE_H);
+//toda //maybe simplify?
+void draw_note(int r, int start, int end, ImDrawList* draw_list) {
+	const ImVec2 pos =  ImVec2(SIDE_BAR + start * CELL_SIZE_W, TOP_BAR + r * CELL_SIZE_H);
+	const ImVec2 size = ImVec2(CELL_SIZE_W * (end - start), CELL_SIZE_H);
 	const int nb = NOTE_BORDER_SIZE;
 	draw_list->AddRectFilled(pos - ImVec2(nb, nb), pos + size + ImVec2(nb, nb), NOTE_BORDER_COL);
 	draw_list->AddRectFilled(pos + ImVec2(nb, nb), pos + size - ImVec2(nb, nb), NOTE_COL);
@@ -438,7 +439,7 @@ void draw_one_frame(GLFWwindow* window) {
 	
 	for(int i = 0; i < CELL_GRID_NUM_H; i++) { 
 		for(Node* cur_c = row[i].next; cur_c != NULL; cur_c = cur_c->next) {
-			draw_note(i, cur_c->col, cur_c->len, draw_list);
+			draw_note(i, cur_c->start, cur_c->end, draw_list);
 		}
 	}
 	//we use a invisible button to tell us when to capture mouse input for the grid
