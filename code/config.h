@@ -42,6 +42,7 @@ const int WINDOW_H = GRID_H + TOP_BAR;
 const int LINE_W = 1; //this is multiplied by two since a line seperates two cells symetrically
 
 const int RESIZE_HANDLE_SIZE = CELL_SIZE_W * 2;
+const int MIN_NOTE_LEN = 2;
 
 const int BPM_BOX_WIDTH   = 105;
 const int SCALE_BOX_WIDTH = 300;

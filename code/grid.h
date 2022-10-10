@@ -3,14 +3,15 @@
 #include "audio.h"
 using namespace ImGui;
 
-
 typedef struct Node{
 	int col;
 	struct Node* next;
 	int len;
 }Node;
+
 Node* moving_node_prev   = NULL;
-Node* resizing_note_prev = NULL;
+Node* resizing_node_start = NULL;
+Node* resizing_node_end = NULL;
 int moving_node_offset = -1;
 int moving_node_row    = -1;
 int max_col; //todo 
@@ -111,6 +112,31 @@ inline void start_moving_note(int r, int c, Node* prev) {
 	moving_node_row = row_to_note(r);
 }
 
+void resize_start(int c) {
+	Node* prev = resizing_node_start;
+	Node* node = prev->next;
+
+	const int last_c = node->col;
+	c = snap_to_grid ? snap(c) : c;
+	const int delta = last_c - c;
+	const int new_len = node->len + delta;
+	if(prev->col + prev->len <= c && new_len >= MIN_NOTE_LEN) {
+		node->len = new_len;
+		node->col = c;
+	}
+}
+void resize_end(int c) {
+	Node* node = resizing_node_end;
+	Node* next = node->next;
+	const int last_end = node->col + node->len;
+	c = snap_to_grid ? snap(c) : c;
+	const int delta = last_end - c;
+	const int new_len = node->len - delta;
+	if((!next || next->col >= node->col + new_len) && new_len >= MIN_NOTE_LEN) {
+		node->len = new_len;
+	}		
+}
+
 bool try_update_grid() {	
 	//get grid co-ordinates
 	ImVec2 mouse_pos = GetMousePos();
@@ -132,15 +158,12 @@ bool try_update_grid() {
 		const int max_size = (CELL_SIZE_W/2)*node->len;
 		const int handle_size = RESIZE_HANDLE_SIZE < max_size ? RESIZE_HANDLE_SIZE : max_size;
 		if(mouse_pos.x - node_start <= handle_size) {
-			SetMouseCursor(ImGuiMouseCursor_ResizeEW);
 			is_hovering_start = true;
 		}
 		else if(node_end - mouse_pos.x <= handle_size) {
-			SetMouseCursor(ImGuiMouseCursor_ResizeEW);
 			is_hovering_end = true;
 		}
 	}
-
 	if(snap_to_grid) {
 		snap_c = snap(c);
 		node_s = get_last_node_that_starts_before_c(r, snap_c);
@@ -149,26 +172,45 @@ bool try_update_grid() {
 		snap_c = c;
 		node_s = node;
 	}
-	if(is_hovering_start && IsMouseClicked(0)) {
-		resizing_note_prev = node;
-
-	}
 	if(!IsMouseDown(0)) {
-		resizing_note_prev = NULL;
+		resizing_node_start = NULL;
+		resizing_node_end = NULL;
 		moving_node_prev = NULL;
 	}
+	if(resizing_node_end || resizing_node_start || is_hovering_end || is_hovering_start) {
+		if(!moving_node_prev)
+			SetMouseCursor(ImGuiMouseCursor_ResizeEW);
+	}
 	if(is_hovering_note && IsMouseDown(1)) {
-		erase_note(r,c, node, prev);
+		erase_note(r, c, node, prev);
+		return true;
+	}
+	if(IsMouseClicked(0)){
+		if(!is_hovering_note) {
+			if(try_place_note(r, snap_c, grid_note_length, node_s)) {
+				play_sound(r);
+				start_moving_note(r, c, node_s);
+				return true;
+			}
+			else return false;
+		}
+		if(is_hovering_start) {
+			resizing_node_start = prev;
+			return false;
+		}
+		if(is_hovering_end) {
+			resizing_node_end = node;
+			return false;
+		}
+	}
+	if(resizing_node_start) {
+		resize_start(c);
 		return false;
 	}
-	if(!is_hovering_note && IsMouseClicked(0)) {
-		if(try_place_note(r, snap_c, grid_note_length, node_s)) {
-			play_sound(r);
-			start_moving_note(r, c, node_s);
-			return true;
-		}
-		else return false;
-	}
+	if(resizing_node_end) {
+		resize_end(c);
+		return false;
+	}	
 	if(moving_node_prev) {
 		if(try_move_note(r, c)){
 			return true;
@@ -180,6 +222,5 @@ bool try_update_grid() {
 		start_moving_note(r, c, prev);
 		return false;
 	}
-	
 	return false;
 }
