@@ -89,7 +89,6 @@ bool try_move_note(int r, int c) {
 	moving_node_prev->next = moving_node->next;
 
 	c = snap_to_grid ? snap(c) : c - moving_node_offset;
-
 	Node* cur = get_last_node_that_starts_before_c(r, c);
 	
 	if(c >= cur->col + cur->len && (!cur->next || c + moving_node->len <= cur->next->col)) {
@@ -103,18 +102,14 @@ bool try_move_note(int r, int c) {
 		return true;
 	}
 	assert(moving_node->next == moving_node_prev->next);
-	assert(moving_node->next != moving_node);
 	moving_node_prev->next = moving_node;
-	assert(moving_node_prev->next != moving_node_prev);
-
 	return false;
 }
 
-void start_moving_note(int r, int c, Node* hov, Node* prev) {
+inline void start_moving_note(int r, int c, Node* prev) {
 	moving_node_prev = prev;
-	moving_node_offset = c - hov->col;
+	moving_node_offset = c - prev->next->col;
 	moving_node_row = row_to_note(r);
-	assert(moving_node_offset >= 0);
 }
 
 bool try_update_grid() {	
@@ -123,40 +118,38 @@ bool try_update_grid() {
 	int r = (mouse_pos.y - TOP_BAR)  / CELL_SIZE_H;
 	int c = (mouse_pos.x - SIDE_BAR) / CELL_SIZE_W;
 	int snap_c;
-	//erase when right mouse button is pressed
-	bool is_hovering_note;
-	Node* prev;
-	Node* node = get_last_node_that_starts_before_c(r,c, prev);
-	Node* node_s;
 
-	if(snap_to_grid){
+	bool is_hovering_note = false;;
+	Node* prev;
+	Node* node = get_last_node_that_starts_before_c(r, c, prev);
+	Node* node_s;
+	if(node->col + node->len > c){
+		is_hovering_note = true;
+	}
+	if(snap_to_grid) {
 		snap_c = snap(c);
-		node_s = get_last_node_that_starts_before_c(r,snap_c);
+		node_s = get_last_node_that_starts_before_c(r, snap_c);
 	}
 	else {
 		snap_c = c;
 		node_s = node;
 	}
-
-	if(node->col + node->len > c){
-		is_hovering_note = true;
-		hovering_over = node;
-	}
-	else {
-		is_hovering_note = false;
-		hovering_over = NULL;
-	}
-
 	if(!IsMouseDown(0)) {
 		resizing_note_prev = NULL;
 		moving_node_prev = NULL;
 	}
-	
 	if(is_hovering_note && IsMouseDown(1)) {
 		erase_note(r,c, node, prev);
 		return false;
 	}
-
+	if(!is_hovering_note && IsMouseClicked(0)) {
+		if(try_place_note(r, snap_c, grid_note_length, node_s)) {
+			play_sound(r);
+			start_moving_note(r, c, node_s);
+			return true;
+		}
+		else return false;
+	}
 	if(moving_node_prev) {
 		if(try_move_note(r, c)){
 			return true;
@@ -165,18 +158,9 @@ bool try_update_grid() {
 		assert(moving_node_prev);
 	}
 	else if(is_hovering_note && IsMouseDown(0)){
-		start_moving_note(r, c, node, prev);
+		start_moving_note(r, c, prev);
 		return false;
 	}
 	
-	//place note
-	if(!is_hovering_note && IsMouseClicked(0)) {
-		if(try_place_note(r, snap_c, grid_note_length, node_s)) {
-			play_sound(r);
-			return true;
-		}
-		return false;
-	}
-
 	return false;
 }
