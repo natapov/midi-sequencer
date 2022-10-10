@@ -506,7 +506,10 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine
 		Text(buff);
 		sprintf(buff,"matching_scales_count: %d", matching_scales_count);
 		Text(buff);
+		sprintf(buff,"hovering over: %d", hovering_over);
+		Text(buff);
 		End();
+
 		Render();
 		ImGui_ImplOpenGL3_RenderDrawData(GetDrawData());
 		glfwSwapBuffers(window);
