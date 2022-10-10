@@ -15,9 +15,6 @@
 #include "audio.h"
 using namespace ImGui;
 
-//todo
-//change everything
-
 enum : char {
 	state_empty  = 0,
 	state_start  = 1,
@@ -30,7 +27,6 @@ enum : char {
 bool english_notes = false; //user-modifiable variable
 const char** note_names = english_notes ? english_note_names : regular_note_names;
 
-ImDrawList* draw_list;
 
 //We use glfw for "Time", glfwGetTime() return a double of seconds since startup 
 typedef double Time;
@@ -69,7 +65,7 @@ static inline ImVec2 operator-(const ImVec2& lhs, const ImVec2& rhs) {
 	return ImVec2(lhs.x - rhs.x, lhs.y - rhs.y); 
 }
 
-void draw_note(int r, int c, int len) {
+void draw_note(int r, int c, int len, ImDrawList* draw_list) {
 	const ImVec2 pos =  ImVec2(SIDE_BAR + c * CELL_SIZE_W, TOP_BAR + r * CELL_SIZE_H);
 	const ImVec2 size = ImVec2(CELL_SIZE_W * len, CELL_SIZE_H);
 	const int nb = NOTE_BORDER_SIZE;
@@ -158,8 +154,6 @@ void update_elapsed_time() {
 		elapsed -= loop_time;
 }
 
-//int resize_note(int y, int old_x, int cur_x){ }; //todo
-
 void select_scale(int n) {
 	selected_scale_idx = n;
 	need_prediction_update = true;
@@ -217,7 +211,10 @@ inline void update_note_legth() {
 }
 
 inline void handle_input() {
-	if(is_grid_hovered)  update_note_legth();
+	if(is_grid_hovered) {
+		need_prediction_update = try_update_grid();
+		update_note_legth();
+	}
 	if(IsKeyPressed(ImGuiKey_Space))  playing = !playing;
 	if(IsKeyPressed(ImGuiKey_Backspace)) {
 		playing = false;
@@ -244,10 +241,7 @@ void draw_one_frame(GLFWwindow* window) {
 	PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0,0)); 
 	Begin("main window", NULL, MAIN_WINDOW_FLAGS);
 	PopStyleVar();
-	if(!draw_list) {
-		draw_list = GetWindowDrawList();
-	}
-
+	static ImDrawList* draw_list = GetWindowDrawList();
 
 	{// TOP BAR
 		SetCursorPos(ImVec2(0,MENU_BAR));
@@ -318,7 +312,6 @@ void draw_one_frame(GLFWwindow* window) {
 		if(selected_base_note != -1)
 			note_preview_value = note_names[selected_base_note];
 		else  note_preview_value = "---";
-		
 		if(shortcut_window) {
 			Begin("Keyboard Shortcuts", &shortcut_window, ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoResize);
 			Text("Space - Play/Pause\nBackspace - Stop\nEnter - Play from start\nHold Shift - Toggle snap to grid\nMouse Wheel - Change note length");
@@ -445,12 +438,12 @@ void draw_one_frame(GLFWwindow* window) {
 	
 	for(int i = 0; i < CELL_GRID_NUM_H; i++) { 
 		for(Node* cur_c = row[i].next; cur_c != NULL; cur_c = cur_c->next) {
-			draw_note(i, cur_c->col, cur_c->len);
+			draw_note(i, cur_c->col, cur_c->len, draw_list);
 		}
 	}
 	//we use a invisible button to tell us when to capture mouse input for the grid
 	SetCursorPos(ImVec2(SIDE_BAR,TOP_BAR));
-	SetItemUsingMouseWheel();
+	SetItemUsingMouseWheel(); 
 	InvisibleButton("grid_overlay", ImVec2(WINDOW_W - SIDE_BAR, WINDOW_H), 0);
 	is_grid_hovered = IsItemHovered();
 	
@@ -458,10 +451,12 @@ void draw_one_frame(GLFWwindow* window) {
 	
 }
 
-int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, int nCmdShow) {
+int wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, int nCmdShow) {
+	assert(!_set_error_mode(_OUT_TO_STDERR));
 	if(!glfwInit())  return -1;
 	GLFWwindow* window = glfwCreateWindow(WINDOW_W, WINDOW_H, "Sequencer", NULL, NULL);
 	assert(window);
+
 	glfwSetWindowAttrib(window, GLFW_RESIZABLE, GLFW_FALSE);
 	glfwMakeContextCurrent(window);
 	glfwSwapInterval(1); //Enable vsync
@@ -488,14 +483,11 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine
 		draw_one_frame(window);
 		
 		handle_input();
-		if(is_grid_hovered) {
-			need_prediction_update = try_update_grid();
-		}
-		
-		
+	    
 		update_elapsed_time();
 		
 		if(playing)  play_notes();
+
 		// Debug window
 		Begin("debug");
 		sprintf(buff,"Notes: %d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d", drawn_notes[11], drawn_notes[10], drawn_notes[9], drawn_notes[8], drawn_notes[7], drawn_notes[6], drawn_notes[5], drawn_notes[4], drawn_notes[3], drawn_notes[2], drawn_notes[1], drawn_notes[0]);
@@ -506,16 +498,15 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine
 		Text(buff);
 		sprintf(buff,"matching_scales_count: %d", matching_scales_count);
 		Text(buff);
-		sprintf(buff,"hovering over: %d", hovering_over);
+		sprintf(buff,"hovering over: %p", hovering_over);
 		Text(buff);
-		End();
+        End();
 
-		Render();
-		ImGui_ImplOpenGL3_RenderDrawData(GetDrawData());
+        Render();
+        ImGui_ImplOpenGL3_RenderDrawData(GetDrawData());
 		glfwSwapBuffers(window);
 	}
 	// Cleanup
-	//we don't free sound files because we need them till the end
 	ImGui_ImplOpenGL3_Shutdown();
 	ImGui_ImplGlfw_Shutdown();
 	DestroyContext();

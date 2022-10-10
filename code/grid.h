@@ -3,25 +3,24 @@
 #include "audio.h"
 using namespace ImGui;
 
+
 typedef struct Node{
 	int col;
 	struct Node* next;
 	int len;
 }Node;
-
 Node* moving_node_prev   = NULL;
 Node* resizing_note_prev = NULL;
 int moving_node_offset = -1;
 int moving_node_row    = -1;
-int max_col; //todo
-
+int max_col; //todo 
 
 Node* hovering_over = NULL;
 
 int drawn_notes[12]; //The number of notes of each type currently on the grid
 int total_drawn_notes = 0;
 
-Node row[CELL_GRID_NUM_H] ={-1, NULL, -1};
+Node row[CELL_GRID_NUM_H] = {-1, NULL, -1};
 
 //todo add proper header
 inline int row_to_note(int n);
@@ -119,13 +118,29 @@ bool try_update_grid() {
 	int c = (mouse_pos.x - SIDE_BAR) / CELL_SIZE_W;
 	int snap_c;
 
-	bool is_hovering_note = false;;
+	bool is_hovering_note  = false;
+	bool is_hovering_start = false;
+	bool is_hovering_end   = false;
+
 	Node* prev;
 	Node* node = get_last_node_that_starts_before_c(r, c, prev);
 	Node* node_s;
 	if(node->col + node->len > c){
 		is_hovering_note = true;
+		const int node_start = node->col * CELL_SIZE_W + SIDE_BAR;
+		const int node_end = (node->col + node->len) * CELL_SIZE_W + SIDE_BAR;
+		const int max_size = (CELL_SIZE_W/2)*node->len;
+		const int handle_size = RESIZE_HANDLE_SIZE < max_size ? RESIZE_HANDLE_SIZE : max_size;
+		if(mouse_pos.x - node_start <= handle_size) {
+			SetMouseCursor(ImGuiMouseCursor_ResizeEW);
+			is_hovering_start = true;
+		}
+		else if(node_end - mouse_pos.x <= handle_size) {
+			SetMouseCursor(ImGuiMouseCursor_ResizeEW);
+			is_hovering_end = true;
+		}
 	}
+
 	if(snap_to_grid) {
 		snap_c = snap(c);
 		node_s = get_last_node_that_starts_before_c(r, snap_c);
@@ -133,6 +148,10 @@ bool try_update_grid() {
 	else {
 		snap_c = c;
 		node_s = node;
+	}
+	if(is_hovering_start && IsMouseClicked(0)) {
+		resizing_note_prev = node;
+
 	}
 	if(!IsMouseDown(0)) {
 		resizing_note_prev = NULL;
