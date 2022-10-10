@@ -15,18 +15,9 @@
 #include "audio.h"
 using namespace ImGui;
 
-enum : char {
-	state_empty  = 0,
-	state_start  = 1,
-	state_middle = 2,
-	state_end    = 4,
-};
-
-
 // GLOBAL VARIABLES 
 bool english_notes = false; //user-modifiable variable
 const char** note_names = english_notes ? english_note_names : regular_note_names;
-
 
 //We use glfw for "Time", glfwGetTime() return a double of seconds since startup 
 typedef double Time;
@@ -38,13 +29,13 @@ int playhead_offset = 0; //The playhead is the line that moves when we press pla
 // Internal state variables
 int note_histogram[12]; //Sum total of each note in all the matching scales
 int matching_scales_count = 0;
-int max_x_cell;
+int max_r_cell;
 
 bool need_prediction_update = false;
 bool is_grid_hovered = false;
 
 // User-modifiable variables:
-int bpm = 180; //beats per minute
+int bpm = 220; //beats per minute
 int note_length_idx  = 2;
 int beats_per_bar    = 4; // the time signiture of the music
 bool playing         = false;
@@ -124,7 +115,7 @@ inline Time pixels_to_time(int p) {
 inline void reset() {
 	elapsed = 0;
 	last_played_grid_col = 0;
-	max_x_cell = -1;
+	max_r_cell = -1;
 }
 
 inline void clear_selection() {
@@ -145,8 +136,8 @@ void update_elapsed_time() {
 
 	playhead_offset = time_to_pixels(elapsed);
 	const int cells_in_bar = CELLS_PER_BEAT * beats_per_bar;
-	const int max_bar = (max_x_cell/cells_in_bar + 1) * cells_in_bar;
-	if(max_x_cell == -1 || !auto_loop)
+	const int max_bar = (max_r_cell/cells_in_bar + 1) * cells_in_bar;
+	if(max_r_cell == -1 || !auto_loop)
 		loop_time = pixels_to_time(GRID_W);
 	else
 		loop_time = pixels_to_time(max_bar * CELL_SIZE_W);
@@ -421,7 +412,6 @@ void draw_one_frame(GLFWwindow* window) {
 		PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(0,2));
 		PushStyleColor(ImGuiCol_Text, BLACK_COL);
 		SetCursorPos(ImVec2(0,TOP_BAR));
-		max_x_cell = -1;
 		for(int y = 0; y < CELL_GRID_NUM_H; y++) {
 			const Note note = row_to_note(y);
 			const int octave = HIGHEST_NOTE_OCTAVE - y/12;
@@ -432,24 +422,24 @@ void draw_one_frame(GLFWwindow* window) {
 		PopStyleVar();
 		PopStyleColor();
 
-		//draw playhead
+		//draw playhead in foreground
 		const int playhead = SIDE_BAR + playhead_offset;
-		draw_list->AddRectFilled(ImVec2(playhead - LINE_W, TOP_BAR), ImVec2(playhead + LINE_W, GRID_H + TOP_BAR), PLAYHEAD_COL);
+		GetForegroundDrawList()->AddRectFilled(ImVec2(playhead - LINE_W, TOP_BAR), ImVec2(playhead + LINE_W, GRID_H + TOP_BAR), PLAYHEAD_COL);
 	}
-	
+	max_r_cell = -1;
 	for(int i = 0; i < CELL_GRID_NUM_H; i++) { 
 		for(Node* cur_c = row[i].next; cur_c != NULL; cur_c = cur_c->next) {
 			draw_note(i, cur_c->start, cur_c->end, draw_list);
+			if(max_r_cell < cur_c->end)
+				max_r_cell = cur_c->end;
 		}
 	}
 	//we use a invisible button to tell us when to capture mouse input for the grid
 	SetCursorPos(ImVec2(SIDE_BAR,TOP_BAR));
 	SetItemUsingMouseWheel(); 
 	InvisibleButton("grid_overlay", ImVec2(WINDOW_W - SIDE_BAR, WINDOW_H), 0);
-	is_grid_hovered = IsItemHovered();
-	
+	is_grid_hovered = IsItemHovered();	
 	End();//main window
-	
 }
 
 int wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, int nCmdShow) {
@@ -489,6 +479,7 @@ int wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, int n
 		
 		if(playing)  play_notes();
 
+		#if 1
 		// Debug window
 		Begin("debug");
 		sprintf(buff,"Notes: %d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d", drawn_notes[11], drawn_notes[10], drawn_notes[9], drawn_notes[8], drawn_notes[7], drawn_notes[6], drawn_notes[5], drawn_notes[4], drawn_notes[3], drawn_notes[2], drawn_notes[1], drawn_notes[0]);
@@ -499,9 +490,10 @@ int wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, int n
 		Text(buff);
 		sprintf(buff,"matching_scales_count: %d", matching_scales_count);
 		Text(buff);
-		sprintf(buff,"hovering over: %p", hovering_over);
+		sprintf(buff,"need predicdion update: %d", need_prediction_update);
 		Text(buff);
         End();
+        #endif
 
         Render();
         ImGui_ImplOpenGL3_RenderDrawData(GetDrawData());

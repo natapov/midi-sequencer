@@ -15,9 +15,6 @@ Node* resizing_node_end = NULL;
 int moving_node_offset = -1;
 int moving_node_row    = -1;
 int moving_node_len    = -1;
-int max_col; //todo 
-
-Node* hovering_over = NULL;
 
 int drawn_notes[12]; //The number of notes of each type currently on the grid
 int total_drawn_notes = 0;
@@ -88,9 +85,11 @@ bool try_place_note(int r, int start, int end, Node* cur) {
 	
 bool try_move_note(int r, int c) {
 	Node* moving_node = moving_node_prev->next;	
-	moving_node_prev->next = moving_node->next;
-
 	c = snap_to_grid ? snap(c) : c - moving_node_offset;
+	if(c == moving_node->start && r == moving_node_row)  return false;
+
+	moving_node_prev->next = moving_node->next;
+	
 	Node* cur = get_last_node_that_starts_before_c(r, c);
 	
 	if(c >= cur->end && (!cur->next || c + moving_node_len <= cur->next->start)) {
@@ -98,9 +97,9 @@ bool try_move_note(int r, int c) {
 		moving_node->start = c;
 		moving_node->end   = c + moving_node_len;
 		moving_node_prev = cur;
-		drawn_notes[moving_node_row] -= 1;
-		moving_node_row = row_to_note(r);
-		drawn_notes[moving_node_row] += 1;
+		drawn_notes[row_to_note(moving_node_row)] -= 1;
+		moving_node_row = r;
+		drawn_notes[row_to_note(r)] += 1;
 		cur->next = moving_node;
 		return true;
 	}
@@ -113,7 +112,7 @@ inline void start_moving_note(int r, int c, Node* prev) {
 	moving_node_prev = prev;
 	moving_node_offset = c - prev->next->start;
 	moving_node_len = get_len(prev->next);
-	moving_node_row = row_to_note(r);
+	moving_node_row = r;
 }
 
 void resize_start(int c) {
@@ -215,11 +214,7 @@ bool try_update_grid() {
 		return false;
 	}	
 	if(moving_node_prev) {
-		if(try_move_note(r, c)){
-			return true;
-		}
-		return false;
-		assert(moving_node_prev);
+		return try_move_note(r, c);
 	}
 	else if(is_hovering_note && IsMouseDown(0)){
 		start_moving_note(r, c, prev);
