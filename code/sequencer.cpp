@@ -38,7 +38,6 @@ bool is_grid_hovered = false;
 int bpm = 220; //beats per minute
 int note_length_idx  = 2;
 int beats_per_bar    = 4; // the time signiture of the music
-bool playing         = false;
 bool predict_mode    = true;
 bool auto_loop       = true;
 bool shortcut_window = false;
@@ -136,6 +135,7 @@ void update_elapsed_time() {
 
 	playhead_offset = time_to_pixels(elapsed);
 	const int cells_in_bar = CELLS_PER_BEAT * beats_per_bar;
+	max_r_cell -= 1;
 	const int max_bar = (max_r_cell/cells_in_bar + 1) * cells_in_bar;
 	if(max_r_cell == -1 || !auto_loop)
 		loop_time = pixels_to_time(GRID_W);
@@ -181,16 +181,20 @@ void make_scale_prediction() {
 	}
 }
 
-//todo:
-inline void play_notes() {
+void play_notes() {
 	const int current = (playhead_offset / CELL_SIZE_W) % CELL_GRID_NUM_W;
-	/*  todo
-	for(int x = last_played_grid_col; x != current; x = (x+1)%CELL_GRID_NUM_W)
-		for(int y = 0; y < CELL_GRID_NUM_H; y++)
-			if(cell[y][x] == state_start) {
-				play_sound(y);
+	for(int i = 0; i < CELL_GRID_NUM_H; i++){
+		for(Node* n = row[i].next; n != NULL; n = n->next) {
+			if(last_played_grid_col < current) {
+				if(n->start > last_played_grid_col && n->start <= current) {
+					play_sound(i);
+				}
 			}
-	*/
+			//else if(n->start <= current || n->start > last_played_grid_col) {
+			//	play_sound(i);
+			//}
+		}
+	}
 	last_played_grid_col = current;
 }
 
@@ -479,7 +483,7 @@ int wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, int n
 		
 		if(playing)  play_notes();
 
-		#if 1
+		#if 0
 		// Debug window
 		Begin("debug");
 		sprintf(buff,"Notes: %d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d", drawn_notes[11], drawn_notes[10], drawn_notes[9], drawn_notes[8], drawn_notes[7], drawn_notes[6], drawn_notes[5], drawn_notes[4], drawn_notes[3], drawn_notes[2], drawn_notes[1], drawn_notes[0]);
@@ -490,7 +494,7 @@ int wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, int n
 		Text(buff);
 		sprintf(buff,"matching_scales_count: %d", matching_scales_count);
 		Text(buff);
-		sprintf(buff,"need predicdion update: %d", need_prediction_update);
+		sprintf(buff,"need preditdion update: %d", need_prediction_update);
 		Text(buff);
         End();
         #endif

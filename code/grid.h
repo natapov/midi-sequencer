@@ -15,13 +15,14 @@ Node* resizing_node_end = NULL;
 int moving_node_offset = -1;
 int moving_node_row    = -1;
 int moving_node_len    = -1;
+bool playing         = false;
 
 int drawn_notes[12]; //The number of notes of each type currently on the grid
 int total_drawn_notes = 0;
 
 Node row[CELL_GRID_NUM_H] = {-1, -1, NULL};
 
-//todo add proper header
+
 inline int row_to_note(int n);
 
 inline int get_len(Node* n) {
@@ -190,7 +191,7 @@ bool try_update_grid() {
 	if(IsMouseClicked(0)){
 		if(!is_hovering_note) {
 			if(try_place_note(r, snap_c, snap_c + grid_note_length, node_s)) {
-				play_sound(r);
+				if(!playing)  play_sound(r);
 				start_moving_note(r, c, node_s);
 				return true;
 			}
