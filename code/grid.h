@@ -19,6 +19,17 @@ int moving_node_len    = -1;
 
 Node row[CELL_GRID_NUM_H] = {-1, -1, NULL};
 
+Node* temp;
+void free_all_nodes(){
+	for(int i = 0; i < CELL_GRID_NUM_H; i++) {
+		for(Node* n = row[i].next; n != NULL;) {
+			temp = n->next;
+			free(n);
+			n = temp;
+		}
+		row[i].next = NULL;
+	}
+}
 
 inline int get_len(Node* n) {
 	return n->end - n->start;
@@ -165,7 +176,7 @@ bool try_update_grid() {
 		is_hovering_note = true;
 		const int node_start_pixels = node->start * CELL_SIZE_W + SIDE_BAR;
 		const int node_end_pixels   = node->end   * CELL_SIZE_W + SIDE_BAR;
-		const int max_size = (CELL_SIZE_W/2) * get_len(node);
+		const int max_size = (CELL_SIZE_W/3) * get_len(node);
 		const int handle_size = RESIZE_HANDLE_SIZE < max_size ? RESIZE_HANDLE_SIZE : max_size;
 		if(mouse_pos.x - node_start_pixels <= handle_size) {
 			is_hovering_start = true;

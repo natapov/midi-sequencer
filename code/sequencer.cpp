@@ -26,10 +26,38 @@ static inline ImVec2 operator-(const ImVec2& lhs, const ImVec2& rhs) {
 void draw_note(int r, int start, int end, ImDrawList* draw_list) {
 	const ImVec2 point1 = ImVec2(SIDE_BAR + start * CELL_SIZE_W, TOP_BAR + r     * CELL_SIZE_H);
 	const ImVec2 point2 = ImVec2(SIDE_BAR + end   * CELL_SIZE_W, TOP_BAR + (r+1) * CELL_SIZE_H);
-	const int nb = NOTE_BORDER_SIZE;
-	draw_list->AddRectFilled(point1 - ImVec2(nb, nb), point2 + ImVec2(nb, nb), NOTE_BORDER_COL);
-	draw_list->AddRectFilled(point1 + ImVec2(nb, nb), point2 - ImVec2(nb, nb), NOTE_COL);
-	//todo: AddRectFilledMultiColor
+	int nb = NOTE_BORDER_SIZE;
+	//NOTE_DARKER_COL = GetColorU32(ImGuiCol_CheckMark);
+	draw_list->AddRectFilled(point1 - ImVec2(nb, nb), point2 + ImVec2(nb, nb), NOTE_COL_2, 5);
+	draw_list->AddRectFilled(point1, point2, NOTE_BORDER_COL_2, 5);
+	draw_list->AddRectFilled(point1 + ImVec2(nb, nb), point2 - ImVec2(nb, nb), NOTE_DARKER_COL, 5);
+}
+
+void draw_note_gradiant_test(int r, int start, int end, ImDrawList* draw_list) {
+	//const int nb = NOTE_BORDER_SIZE*2;
+
+	const ImVec2 point1 = ImVec2(SIDE_BAR + start * CELL_SIZE_W, TOP_BAR + r     * CELL_SIZE_H);//+ ImVec2(nb, nb);
+	const ImVec2 point3 = ImVec2(SIDE_BAR + end   * CELL_SIZE_W, TOP_BAR + (r+1) * CELL_SIZE_H);//- ImVec2(nb, nb);
+
+	const ImVec2 point4 = ImVec2(point1.x, point3.y);
+	const ImVec2 point2 = ImVec2(point3.x, point1.y);
+
+	const int fb = NOTE_FADE_SIZE;
+	//BORDER
+	//draw_list->AddRectFilled(point1 - ImVec2(nb, nb), point2 + ImVec2(nb, nb), NOTE_BORDER_COL);
+	//INNER (SOLID) PART
+	draw_list->AddRectFilled(point1 + ImVec2(fb, fb), point3 - ImVec2(fb, fb), NOTE_COL);
+
+	//FADE
+	draw_list->AddRectFilledMultiColor(point1, point4 + ImVec2(fb, 0), NOTE_COL_2, NOTE_COL, NOTE_COL, NOTE_COL_2);
+	draw_list->AddRectFilledMultiColor(point1, point2 + ImVec2(0, fb), NOTE_COL_2, NOTE_COL_2, NOTE_COL, NOTE_COL);
+	draw_list->AddRectFilledMultiColor(point4 - ImVec2(0, fb), point3, NOTE_COL, NOTE_COL, NOTE_COL_2, NOTE_COL_2);
+	draw_list->AddRectFilledMultiColor(point2 - ImVec2(fb, 0), point3, NOTE_COL, NOTE_COL_2, NOTE_COL_2, NOTE_COL);
+
+	draw_list->AddRectFilledMultiColor(point1, point1 + ImVec2(fb,fb), NOTE_COL_2, NOTE_COL_2, NOTE_COL, NOTE_COL_2);
+	draw_list->AddRectFilledMultiColor(point2 + ImVec2(-fb,0), point2 + ImVec2(0,fb), NOTE_COL_2, NOTE_COL_2, NOTE_COL_2, NOTE_COL);
+	draw_list->AddRectFilledMultiColor(point3 - ImVec2(fb,fb), point3, NOTE_COL, NOTE_COL_2, NOTE_COL_2, NOTE_COL_2);
+	draw_list->AddRectFilledMultiColor(point4 + ImVec2(fb,0), point4 - ImVec2(0,fb), NOTE_COL_2, NOTE_COL_2, NOTE_COL_2, NOTE_COL);
 }
 
 inline bool is_sharp(Note note) {
@@ -116,7 +144,6 @@ void update_elapsed_time() {
 		if(elapsed > pixels_to_time(CELL_SIZE_W)/3)
 			elapsed = 0;
 	}
-
 }
 
 void select_scale(int n) {
@@ -343,6 +370,7 @@ void draw_one_frame(GLFWwindow* window) {
 			playing = false;
 			total_drawn_notes = 0;
 			for(auto& it : drawn_notes) it = 0;
+			free_all_nodes();
 			need_prediction_update = true;
 		}
 		SameLine();
@@ -453,9 +481,9 @@ int wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, int n
 		draw_one_frame(window);
 		
 		handle_input();
-	    
-		update_elapsed_time();
 		
+		update_elapsed_time();
+
 		if(playing)  play_notes();
 
 		#if 0
@@ -473,9 +501,8 @@ int wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, int n
 		Text(buff);
         End();
         #endif
-
         Render();
-        ImGui_ImplOpenGL3_RenderDrawData(GetDrawData());
+		ImGui_ImplOpenGL3_RenderDrawData(GetDrawData());
 		glfwSwapBuffers(window);
 	}
 	// Cleanup

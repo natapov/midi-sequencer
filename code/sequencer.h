@@ -46,16 +46,25 @@ const int BASE_BOX_WIDTH  = 85;
 
 const int FONT_SIZE = 20;
 
+const int NOTE_FADE_SIZE = CELL_SIZE_H/3;
+
 // COLORS
-const ImU32 BAR_LINE_COL    = IM_COL32(100, 100, 100, 255);
-const ImU32 BEAT_LINE_COL   = IM_COL32(40 , 40 , 40 , 255);
-const ImU32 PLAYHEAD_COL    = IM_COL32(250, 250, 0  , 180);
-const ImU32 NOTE_COL        = IM_COL32(38 , 158, 255, 255);
-const ImU32 BLACK_COL       = IM_COL32(0  , 0  , 0  , 255);
-const ImU32 BLACK_NOTE_COL  = IM_COL32(250, 250, 250, 255);
-const ImU32 WHITE_NOTE_COL  = IM_COL32(10 , 10 , 10 , 255);
-const ImU32 GRID_BG_COL     = IM_COL32(75 , 100, 150, 255);
-const ImU32 NOTE_BORDER_COL = IM_COL32(200, 200, 100, 255);
+const ImU32 BAR_LINE_COL      = IM_COL32(100, 100, 100, 255);
+const ImU32 BEAT_LINE_COL     = IM_COL32(40 , 40 , 40 , 255);
+const ImU32 PLAYHEAD_COL      = IM_COL32(250, 250, 0  , 180);
+//ImU32 NOTE_BORDER_COL = IM_COL32(43,158,172,255);
+const ImU32 NOTE_BORDER_COL   = IM_COL32(46,189,170,255);
+const ImU32 NOTE_COL_2        = IM_COL32(200, 200, 100, 255);
+const ImU32 NOTE_DARKER_COL   = IM_COL32(0,133,255,255);
+const ImU32 NOTE_BORDER_COL_2 = IM_COL32(153,181,255,255);
+const ImU32 NOTE_COL          = IM_COL32(38 , 158, 255, 255);
+const ImU32 BLACK_COL         = IM_COL32(0  , 0  , 0  , 255);
+const ImU32 BLACK_NOTE_COL    = IM_COL32(250, 250, 250, 255);
+const ImU32 WHITE_NOTE_COL    = IM_COL32(10 , 10 , 10 , 255);
+const ImU32 GRID_BG_COL       = IM_COL32(75 , 100, 150, 255);
+const ImU32 RED_COL           = IM_COL32(255, 0  , 0  , 255);
+const ImU32 BLUE_COL          = IM_COL32(0  , 0  , 255, 255);
+
 
 // FLAGS
 const ImGuiWindowFlags MAIN_WINDOW_FLAGS =  ImGuiWindowFlags_NoScrollWithMouse | 
