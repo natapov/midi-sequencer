@@ -1,19 +1,12 @@
 #ifndef AUDIO_H
 #define AUDIO_H
+#include "sequencer.h"
+
 WAVEFORMATEX                  wfx[CELL_GRID_NUM_H] = {0};
 XAUDIO2_BUFFER             buffer[CELL_GRID_NUM_H] = {0};
-IXAudio2SourceVoice* pSourceVoice[CELL_GRID_NUM_H];
+IXAudio2* pXAudio2;
 
-inline void stop_sound(int y){
-	pSourceVoice[y]->Stop(0);
-	pSourceVoice[y]->FlushSourceBuffers();
-}
 
-inline void play_sound(int y) {
-	stop_sound(y);
-	pSourceVoice[y]->SubmitSourceBuffer(&buffer[y], NULL);
-	pSourceVoice[y]->Start(0);
-}
 
 // Parses a .wav file and loads it into xaudio2 structs 
 void load_audio_data(int i) {
@@ -65,13 +58,12 @@ void load_audio_data(int i) {
 
 inline void init_xaudio() {
 	CoInitializeEx(NULL, COINIT_MULTITHREADED);
-	IXAudio2* pXAudio2 = NULL;
+	pXAudio2 = NULL;
 	XAudio2Create(&pXAudio2, 0, XAUDIO2_DEFAULT_PROCESSOR);
 	IXAudio2MasteringVoice* pMasterVoice = NULL;
 	pXAudio2->CreateMasteringVoice(&pMasterVoice);
 	for(int i = 0; i < CELL_GRID_NUM_H; i++) {
 		load_audio_data(i);
-		pXAudio2->CreateSourceVoice(&pSourceVoice[i], &wfx[i]);
 	}
 }
 #endif

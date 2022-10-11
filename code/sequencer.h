@@ -1,5 +1,5 @@
-#ifndef CONFIG_H
-#define CONFIG_H
+#ifndef SEQUENCER_H
+#define SEQUENCER_H
 
 typedef int Note;
 enum : Note {
@@ -16,11 +16,7 @@ enum : Note {
 	Do_ = 1,
 	Do  = 0,
 };
-int grid_note_length = 8; // the size of notes the user is currently drawing, in cells
-bool snap_to_grid    = true;
-
-//general buffer for temporary strings
-char buff[300]; 
+// 
 
 // CONFIG
 // these are mostly sizes of different ui elements 
@@ -28,7 +24,7 @@ const int CELLS_PER_BEAT = 8;//this numbers of cells in a beat (a quarter note)
 
 const int CELL_GRID_NUM_H = 35;
 const int CELL_GRID_NUM_W = 40 * CELLS_PER_BEAT;
-const int CELL_SIZE_W = 4;
+const int CELL_SIZE_W = 4; //in pixels
 const int CELL_SIZE_H = 20;
 const int NOTE_BORDER_SIZE = 1;
 
@@ -73,5 +69,48 @@ const char* english_note_names[12] = {"C",  "C#",  "D",  "D#",  "E",  "F",  "F#"
 
 const int HIGHEST_NOTE = So_; 
 const int HIGHEST_NOTE_OCTAVE = 5;
+
+
+//general buffer for temporary strings
+char buff[300]; 
+// GLOBAL VARIABLES 
+bool english_notes = false; //user-modifiable variable
+const char** note_names = english_notes ? english_note_names : regular_note_names;
+
+//We use glfw for "Time", glfwGetTime() return a double of seconds since startup 
+typedef double Time;
+Time elapsed = 0; //Seconds played since last loop
+
+int last_played_grid_col = -1;//this is only global because it needs to be reset in reset()
+int playhead_offset = 0; //The playhead is the line that moves when we press play, this is it's location on the grid
+
+// Internal state variables
+int note_histogram[12]; //Sum total of each note in all the matching scales
+int matching_scales_count = 0;
+int max_r_cell;
+int drawn_notes[12]; //The number of notes of each type currently on the grid
+int total_drawn_notes = 0;
+
+
+bool need_prediction_update = false;
+bool is_grid_hovered = false;
+
+// User-modifiable variables:
+int bpm = 220; //beats per minute
+int note_length_idx  = 2;
+int beats_per_bar    = 4; // the time signiture of the music
+bool predict_mode    = true;
+bool auto_loop       = true;
+bool shortcut_window = false;
+int grid_note_length = 8; // the size of notes the user is currently drawing, in cells
+bool snap_to_grid    = true;
+bool playing         = false;
+
+//selector variables
+Note selected_base_note = -1; 
+int selected_scale_idx  = -1;
+
+// headers 
+inline int row_to_note(int n);
 
 #endif

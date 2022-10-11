@@ -1,4 +1,4 @@
-#include "config.h"
+#include "sequencer.h"
 #include "imgui.h"
 #include "audio.h"
 using namespace ImGui;
@@ -6,6 +6,7 @@ using namespace ImGui;
 typedef struct Node{
 	int start;
 	int end;
+	IXAudio2SourceVoice* voice;
 	struct Node* next;
 }Node;
 
@@ -15,18 +16,23 @@ Node* resizing_node_end = NULL;
 int moving_node_offset = -1;
 int moving_node_row    = -1;
 int moving_node_len    = -1;
-bool playing         = false;
-
-int drawn_notes[12]; //The number of notes of each type currently on the grid
-int total_drawn_notes = 0;
 
 Node row[CELL_GRID_NUM_H] = {-1, -1, NULL};
 
 
-inline int row_to_note(int n);
-
 inline int get_len(Node* n) {
 	return n->end - n->start;
+}
+
+inline void stop_sound(Node* n){
+	n->voice->Stop(0);
+	n->voice->FlushSourceBuffers();
+}
+
+inline void play_sound(Node* n, int r) {
+	stop_sound(n);
+	n->voice->SubmitSourceBuffer(&buffer[r], NULL);
+	n->voice->Start(0);
 }
 
 Node* init_node(int start, int end, Node* next = NULL) {
@@ -35,6 +41,7 @@ Node* init_node(int start, int end, Node* next = NULL) {
 	ret->start = start;
 	ret->end = end;
 	ret->next = next;
+	pXAudio2->CreateSourceVoice(&ret->voice, &wfx[1]);
 	return ret;
 }
 
@@ -191,7 +198,7 @@ bool try_update_grid() {
 	if(IsMouseClicked(0)){
 		if(!is_hovering_note) {
 			if(try_place_note(r, snap_c, snap_c + grid_note_length, node_s)) {
-				if(!playing)  play_sound(r);
+				if(!playing)  play_sound(node_s->next, r);
 				start_moving_note(r, c, node_s);
 				return true;
 			}

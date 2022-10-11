@@ -11,43 +11,11 @@
 #include "assert.h"
 #include "scales.h"
 #include "grid.h"
-#include "config.h"
 #include "audio.h"
+#include "sequencer.h"
 using namespace ImGui;
 
-// GLOBAL VARIABLES 
-bool english_notes = false; //user-modifiable variable
-const char** note_names = english_notes ? english_note_names : regular_note_names;
-
-//We use glfw for "Time", glfwGetTime() return a double of seconds since startup 
-typedef double Time;
-Time elapsed = 0; //Seconds played since last loop
-
-int last_played_grid_col;//this is only global because it needs to be reset in reset()
-int playhead_offset = 0; //The playhead is the line that moves when we press play, this is it's location on the grid
-
-// Internal state variables
-int note_histogram[12]; //Sum total of each note in all the matching scales
-int matching_scales_count = 0;
-int max_r_cell;
-
-bool need_prediction_update = false;
-bool is_grid_hovered = false;
-
-// User-modifiable variables:
-int bpm = 220; //beats per minute
-int note_length_idx  = 2;
-int beats_per_bar    = 4; // the time signiture of the music
-bool predict_mode    = true;
-bool auto_loop       = true;
-bool shortcut_window = false;
-
-//selector variables
-Note selected_base_note = -1; 
-int selected_scale_idx  = -1;
-
 // FUNCTIONS
-
 static inline ImVec2 operator+(const ImVec2& lhs, const ImVec2& rhs) { 
 	return ImVec2(lhs.x + rhs.x, lhs.y + rhs.y); 
 }
@@ -55,13 +23,12 @@ static inline ImVec2 operator-(const ImVec2& lhs, const ImVec2& rhs) {
 	return ImVec2(lhs.x - rhs.x, lhs.y - rhs.y); 
 }
 
-//toda //maybe simplify?
 void draw_note(int r, int start, int end, ImDrawList* draw_list) {
-	const ImVec2 pos =  ImVec2(SIDE_BAR + start * CELL_SIZE_W, TOP_BAR + r * CELL_SIZE_H);
-	const ImVec2 size = ImVec2(CELL_SIZE_W * (end - start), CELL_SIZE_H);
+	const ImVec2 point1 = ImVec2(SIDE_BAR + start * CELL_SIZE_W, TOP_BAR + r     * CELL_SIZE_H);
+	const ImVec2 point2 = ImVec2(SIDE_BAR + end   * CELL_SIZE_W, TOP_BAR + (r+1) * CELL_SIZE_H);
 	const int nb = NOTE_BORDER_SIZE;
-	draw_list->AddRectFilled(pos - ImVec2(nb, nb), pos + size + ImVec2(nb, nb), NOTE_BORDER_COL);
-	draw_list->AddRectFilled(pos + ImVec2(nb, nb), pos + size - ImVec2(nb, nb), NOTE_COL);
+	draw_list->AddRectFilled(point1 - ImVec2(nb, nb), point2 + ImVec2(nb, nb), NOTE_BORDER_COL);
+	draw_list->AddRectFilled(point1 + ImVec2(nb, nb), point2 - ImVec2(nb, nb), NOTE_COL);
 	//todo: AddRectFilledMultiColor
 }
 
@@ -113,7 +80,7 @@ inline Time pixels_to_time(int p) {
 
 inline void reset() {
 	elapsed = 0;
-	last_played_grid_col = 0;
+	last_played_grid_col = -1;
 	max_r_cell = -1;
 }
 
@@ -135,15 +102,21 @@ void update_elapsed_time() {
 
 	playhead_offset = time_to_pixels(elapsed);
 	const int cells_in_bar = CELLS_PER_BEAT * beats_per_bar;
-	max_r_cell -= 1;
-	const int max_bar = (max_r_cell/cells_in_bar + 1) * cells_in_bar;
+	//max_r_cell -= 1;
+	const int max_bar = ((max_r_cell-1)/cells_in_bar + 1) * cells_in_bar;
 	if(max_r_cell == -1 || !auto_loop)
 		loop_time = pixels_to_time(GRID_W);
 	else
 		loop_time = pixels_to_time(max_bar * CELL_SIZE_W);
 
-	if(elapsed >= loop_time) 
+	// in the case of strong lag or erasing a note that shortens loop time
+
+	if(elapsed >= loop_time){
 		elapsed -= loop_time;
+		if(elapsed > pixels_to_time(CELL_SIZE_W)/3)
+			elapsed = 0;
+	}
+
 }
 
 void select_scale(int n) {
@@ -181,18 +154,20 @@ void make_scale_prediction() {
 	}
 }
 
+
 void play_notes() {
 	const int current = (playhead_offset / CELL_SIZE_W) % CELL_GRID_NUM_W;
+	//todo skip if too long has passed to not spam lots of notes
 	for(int i = 0; i < CELL_GRID_NUM_H; i++){
 		for(Node* n = row[i].next; n != NULL; n = n->next) {
-			if(last_played_grid_col < current) {
+			if(last_played_grid_col <= current) {
 				if(n->start > last_played_grid_col && n->start <= current) {
-					play_sound(i);
+					play_sound(n, i);
 				}
 			}
-			//else if(n->start <= current || n->start > last_played_grid_col) {
-			//	play_sound(i);
-			//}
+			else if(n->start <= current || n->start > last_played_grid_col) {
+				play_sound(n, i);
+			}
 		}
 	}
 	last_played_grid_col = current;
