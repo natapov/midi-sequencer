@@ -486,6 +486,7 @@ int wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, int n
 
 		if(playing)  play_notes();
 
+
 		#if 0
 		// Debug window
 		Begin("debug");
@@ -498,6 +499,8 @@ int wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, int n
 		sprintf(buff,"matching_scales_count: %d", matching_scales_count);
 		Text(buff);
 		sprintf(buff,"need preditdion update: %d", need_prediction_update);
+		Text(buff);
+		sprintf(buff,"fps :%f", GetIO().Framerate);
 		Text(buff);
         End();
         #endif
