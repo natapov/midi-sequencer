@@ -2,15 +2,20 @@
 #define AUDIO_H
 #include "sequencer.h"
 
-WAVEFORMATEX                  wfx[CELL_GRID_NUM_H] = {0};
-XAUDIO2_BUFFER             buffer[CELL_GRID_NUM_H] = {0};
+WAVEFORMATEX wfx = {/* .wFormatTag      =*/ 1,
+					/* .nChannels       =*/ 2,
+					/* .nSamplesPerSec  =*/ 14400,
+					/* .nAvgBytesPerSec =*/ 57600,
+					/* .nBlockAlign     =*/ 4,
+					/* .wBitsPerSample  =*/ 16,
+					/* .cbSize          =*/ 0};
+
+XAUDIO2_BUFFER buffer[CELL_GRID_NUM_H] = {0};
 IXAudio2* pXAudio2;
-
-
 
 // Parses a .wav file and loads it into xaudio2 structs 
 void load_audio_data(int i) {
-	sprintf(buff, "../audio/%d.WAV", CELL_GRID_NUM_H - i);
+	StringCchPrintf(buff, BUFF_SIZE, "../audio/%d.WAV", CELL_GRID_NUM_H - i);
 
 	HANDLE audioFile = CreateFile(buff, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, 0, NULL);
 	assert(audioFile != INVALID_HANDLE_VALUE);
@@ -31,15 +36,10 @@ void load_audio_data(int i) {
 	assert(fileFormat == 'EVAW');
 
 	BYTE* audioData;
-	while(chunks_proccessed < 2){
+	while(chunks_proccessed < 1){
 		if(!ReadFile(audioFile, &chunkType, sizeof(DWORD), &bytesRead, NULL)) break;
 		ReadFile(audioFile, &chunkDataSize, sizeof(DWORD), &bytesRead, NULL);
-		switch(chunkType){
-		case ' tmf':
-			ReadFile(audioFile, &wfx[i], chunkDataSize, &bytesRead, NULL);        // Wave format struct
-			chunks_proccessed += 1;
-			break;
-		case 'atad':
+		if(chunkType == 'atad') {
 			audioData = (BYTE*) malloc(chunkDataSize);
 			assert(audioData);
 			ReadFile(audioFile, audioData, chunkDataSize, &bytesRead, NULL);      // Read actual audio data
@@ -47,12 +47,12 @@ void load_audio_data(int i) {
 			buffer[i].pAudioData = audioData;
 			buffer[i].Flags = XAUDIO2_END_OF_STREAM;
 			chunks_proccessed += 1;
-			break;
-		default:
+		}
+		else {
 			SetFilePointer(audioFile, chunkDataSize, NULL, FILE_CURRENT);		  // Skip chunk
 		}
 	}
-	assert(chunks_proccessed == 2);
+	assert(chunks_proccessed == 1);
 	CloseHandle(audioFile);
 }
 

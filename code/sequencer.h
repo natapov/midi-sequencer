@@ -81,7 +81,9 @@ const int HIGHEST_NOTE_OCTAVE = 5;
 
 
 //general buffer for temporary strings
-char buff[300]; 
+const int BUFF_SIZE = 32;
+char buff[BUFF_SIZE]; 
+
 // GLOBAL VARIABLES 
 bool english_notes = false; //user-modifiable variable
 const char** note_names = english_notes ? english_note_names : regular_note_names;

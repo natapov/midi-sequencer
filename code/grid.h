@@ -10,17 +10,17 @@ typedef struct Node{
 	struct Node* next;
 }Node;
 
-Node* moving_node_prev   = NULL;
+Node* moving_node_prev    = NULL;
 Node* resizing_node_start = NULL;
-Node* resizing_node_end = NULL;
-int moving_node_offset = -1;
-int moving_node_row    = -1;
-int moving_node_len    = -1;
+Node* resizing_node_end   = NULL;
+int moving_node_offset    = -1;
+int moving_node_row       = -1;
+int moving_node_len       = -1;
 
 Node row[CELL_GRID_NUM_H] = {-1, -1, NULL};
 
 Node* temp;
-void free_all_nodes(){
+void free_all_nodes() {
 	for(int i = 0; i < CELL_GRID_NUM_H; i++) {
 		for(Node* n = row[i].next; n != NULL;) {
 			temp = n->next;
@@ -52,7 +52,7 @@ Node* init_node(int start, int end, Node* next = NULL) {
 	ret->start = start;
 	ret->end = end;
 	ret->next = next;
-	pXAudio2->CreateSourceVoice(&ret->voice, &wfx[1]);
+	pXAudio2->CreateSourceVoice(&ret->voice, &wfx);
 	return ret;
 }
 
@@ -141,7 +141,7 @@ void resize_start(int c) {
 	const int last_c = node->start;
 	c = snap_to_grid ? snap(c) : c;
 	const int delta = last_c - c;
-	const int new_len = node->end - node->start + delta;
+	const int new_len = get_len(node) + delta;
 	if(prev->end <= c && new_len >= MIN_NOTE_LEN) {
 		node->start = c;
 	}
@@ -152,7 +152,7 @@ void resize_end(int c) {
 	const int last_end = node->end;
 	c = snap_to_grid ? snap(c) : c;
 	const int delta = last_end - c;
-	const int new_len = node->end - node->start - delta;
+	const int new_len = get_len(node) - delta;
 	if((!next || next->start >= node->start + new_len) && new_len >= MIN_NOTE_LEN) {
 		node->end = c;
 	}		
@@ -206,7 +206,7 @@ bool try_update_grid() {
 		erase_note(r, c, node, prev);
 		return true;
 	}
-	if(IsMouseClicked(0)){
+	if(IsMouseClicked(0)) {
 		if(!is_hovering_note) {
 			if(try_place_note(r, snap_c, snap_c + grid_note_length, node_s)) {
 				if(!playing)  play_sound(node_s->next, r);

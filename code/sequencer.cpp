@@ -1,14 +1,10 @@
 #include "windows.h"
-#include "shellapi.h"
 #include "xaudio2.h"
-#include "Objbase.h"
 #include "imgui.h"
 #include "imgui_impl_glfw.h"
 #include "imgui_impl_opengl3.h"
-#include "imgui_internal.h"
-#include "stdio.h"
+#include "strsafe.h"
 #include "GLFW/glfw3.h"
-#include "assert.h"
 #include "scales.h"
 #include "grid.h"
 #include "audio.h"
@@ -19,45 +15,20 @@ using namespace ImGui;
 static inline ImVec2 operator+(const ImVec2& lhs, const ImVec2& rhs) { 
 	return ImVec2(lhs.x + rhs.x, lhs.y + rhs.y); 
 }
-static inline ImVec2 operator-(const ImVec2& lhs, const ImVec2& rhs) { 
-	return ImVec2(lhs.x - rhs.x, lhs.y - rhs.y); 
-}
 
 void draw_note(int r, int start, int end, ImDrawList* draw_list) {
 	const ImVec2 point1 = ImVec2(SIDE_BAR + start * CELL_SIZE_W, TOP_BAR + r     * CELL_SIZE_H);
 	const ImVec2 point2 = ImVec2(SIDE_BAR + end   * CELL_SIZE_W, TOP_BAR + (r+1) * CELL_SIZE_H);
 	int nb = NOTE_BORDER_SIZE;
-	//NOTE_DARKER_COL = GetColorU32(ImGuiCol_CheckMark);
-	draw_list->AddRectFilled(point1 - ImVec2(nb, nb), point2 + ImVec2(nb, nb), NOTE_COL_2, 5);
+	auto NOTE_UPPER_COL = GetColorU32(ImGuiCol_CheckMark);
+
+	draw_list->AddRectFilled(point1 + ImVec2(-nb,-nb), point2 + ImVec2( nb, nb), NOTE_COL_2, 5);
 	draw_list->AddRectFilled(point1, point2, NOTE_BORDER_COL_2, 5);
-	draw_list->AddRectFilled(point1 + ImVec2(nb, nb), point2 - ImVec2(nb, nb), NOTE_DARKER_COL, 5);
-}
 
-void draw_note_gradiant_test(int r, int start, int end, ImDrawList* draw_list) {
-	//const int nb = NOTE_BORDER_SIZE*2;
+	ImDrawFlags flags = ImDrawFlags_RoundCornersTopLeft | ImDrawFlags_RoundCornersTopRight;
+	draw_list->AddRectFilled(point1 + ImVec2( nb, nb), point2 + ImVec2(-nb,-nb), NOTE_DARKER_COL, 5);
+	//draw_list->AddRectFilled(point1 + ImVec2( nb, nb), point2 + ImVec2(-nb ,-nb - (*CELL_SIZE_H/3)), NOTE_UPPER_COL, 5, flags);
 
-	const ImVec2 point1 = ImVec2(SIDE_BAR + start * CELL_SIZE_W, TOP_BAR + r     * CELL_SIZE_H);//+ ImVec2(nb, nb);
-	const ImVec2 point3 = ImVec2(SIDE_BAR + end   * CELL_SIZE_W, TOP_BAR + (r+1) * CELL_SIZE_H);//- ImVec2(nb, nb);
-
-	const ImVec2 point4 = ImVec2(point1.x, point3.y);
-	const ImVec2 point2 = ImVec2(point3.x, point1.y);
-
-	const int fb = NOTE_FADE_SIZE;
-	//BORDER
-	//draw_list->AddRectFilled(point1 - ImVec2(nb, nb), point2 + ImVec2(nb, nb), NOTE_BORDER_COL);
-	//INNER (SOLID) PART
-	draw_list->AddRectFilled(point1 + ImVec2(fb, fb), point3 - ImVec2(fb, fb), NOTE_COL);
-
-	//FADE
-	draw_list->AddRectFilledMultiColor(point1, point4 + ImVec2(fb, 0), NOTE_COL_2, NOTE_COL, NOTE_COL, NOTE_COL_2);
-	draw_list->AddRectFilledMultiColor(point1, point2 + ImVec2(0, fb), NOTE_COL_2, NOTE_COL_2, NOTE_COL, NOTE_COL);
-	draw_list->AddRectFilledMultiColor(point4 - ImVec2(0, fb), point3, NOTE_COL, NOTE_COL, NOTE_COL_2, NOTE_COL_2);
-	draw_list->AddRectFilledMultiColor(point2 - ImVec2(fb, 0), point3, NOTE_COL, NOTE_COL_2, NOTE_COL_2, NOTE_COL);
-
-	draw_list->AddRectFilledMultiColor(point1, point1 + ImVec2(fb,fb), NOTE_COL_2, NOTE_COL_2, NOTE_COL, NOTE_COL_2);
-	draw_list->AddRectFilledMultiColor(point2 + ImVec2(-fb,0), point2 + ImVec2(0,fb), NOTE_COL_2, NOTE_COL_2, NOTE_COL_2, NOTE_COL);
-	draw_list->AddRectFilledMultiColor(point3 - ImVec2(fb,fb), point3, NOTE_COL, NOTE_COL_2, NOTE_COL_2, NOTE_COL_2);
-	draw_list->AddRectFilledMultiColor(point4 + ImVec2(fb,0), point4 - ImVec2(0,fb), NOTE_COL_2, NOTE_COL_2, NOTE_COL_2, NOTE_COL);
 }
 
 inline bool is_sharp(Note note) {
@@ -335,7 +306,7 @@ void draw_one_frame(GLFWwindow* window) {
 		if(selected_scale_idx != -1)
 			scale_preview_value = scale[selected_scale_idx].name;	
 		else if(predict_mode) {
-			sprintf(buff, "%d Possible scales", matching_scales_count);
+			StringCchPrintf(buff, BUFF_SIZE, "%d Possible scales", matching_scales_count);
 			scale_preview_value = buff;
 		}
 		else  scale_preview_value = "Select scale";
@@ -346,7 +317,7 @@ void draw_one_frame(GLFWwindow* window) {
 				if(predict_mode) {
 					if((selected_base_note == -1 && scale[n].is_matching) || (scale[n].is_matching & (1<<selected_base_note))) {
 						if(scale[n].number_of_notes == total_drawn_notes) {
-							sprintf(buff, "%s [Exact match]", scale[n].name);
+							StringCchPrintf(buff, BUFF_SIZE, "%s [Exact match]", scale[n].name);
 							if(Selectable(buff, is_selected))
 								select_scale(n);
 						}
@@ -406,9 +377,9 @@ void draw_one_frame(GLFWwindow* window) {
 	}
 
 	{// GRID LINES + PLAYHEAD
-		for(int i = 0; i<= CELL_GRID_NUM_H; i++)
+		for(int i = 0; i <= CELL_GRID_NUM_H; i++)
 			draw_list->AddRectFilled(ImVec2(0, TOP_BAR + CELL_SIZE_H*i - LINE_W), ImVec2(GRID_W + SIDE_BAR, TOP_BAR + CELL_SIZE_H*i + LINE_W), BEAT_LINE_COL);		
-		for(int i = 0; i<= CELL_GRID_NUM_W; i+=grid_note_length) {
+		for(int i = 0; i <= CELL_GRID_NUM_W; i += grid_note_length) {
 			const int cells_per_bar = CELLS_PER_BEAT * beats_per_bar;
 			ImU32 color = i % cells_per_bar == 0 ? BAR_LINE_COL : BEAT_LINE_COL;
 			draw_list->AddRectFilled(ImVec2(SIDE_BAR + CELL_SIZE_W*i - LINE_W, TOP_BAR), ImVec2(SIDE_BAR + CELL_SIZE_W*i + LINE_W, GRID_H + TOP_BAR), color);
@@ -423,7 +394,7 @@ void draw_one_frame(GLFWwindow* window) {
 			const Note note = row_to_note(y);
 			const int octave = HIGHEST_NOTE_OCTAVE - y/12;
 			const ImU32 box_col = !is_sharp(note) ? BLACK_NOTE_COL : WHITE_NOTE_COL;
-			sprintf(buff, "%s%d", note_names[note], octave);
+			StringCchPrintf(buff, BUFF_SIZE, "%s%d", note_names[note], octave);
 			TextBox(buff, ImVec2(SIDE_BAR, CELL_SIZE_H-2), ImVec2(0,0), box_col);
 		}
 		PopStyleVar();
@@ -443,7 +414,6 @@ void draw_one_frame(GLFWwindow* window) {
 	}
 	//we use a invisible button to tell us when to capture mouse input for the grid
 	SetCursorPos(ImVec2(SIDE_BAR,TOP_BAR));
-	SetItemUsingMouseWheel(); 
 	InvisibleButton("grid_overlay", ImVec2(WINDOW_W - SIDE_BAR, WINDOW_H), 0);
 	is_grid_hovered = IsItemHovered();	
 	End();//main window
@@ -485,22 +455,21 @@ int wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, int n
 		update_elapsed_time();
 
 		if(playing)  play_notes();
-
-
 		#if 0
 		// Debug window
+		ShowStyleEditor();
 		Begin("debug");
-		sprintf(buff,"Notes: %d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d", drawn_notes[11], drawn_notes[10], drawn_notes[9], drawn_notes[8], drawn_notes[7], drawn_notes[6], drawn_notes[5], drawn_notes[4], drawn_notes[3], drawn_notes[2], drawn_notes[1], drawn_notes[0]);
+		StringCchPrintf(buff, BUFF_SIZE,"Notes: %d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d", drawn_notes[11], drawn_notes[10], drawn_notes[9], drawn_notes[8], drawn_notes[7], drawn_notes[6], drawn_notes[5], drawn_notes[4], drawn_notes[3], drawn_notes[2], drawn_notes[1], drawn_notes[0]);
 		Text(buff);
-		sprintf(buff,"Note histogram: %d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d", note_histogram[11], note_histogram[10], note_histogram[9], note_histogram[8], note_histogram[7], note_histogram[6], note_histogram[5], note_histogram[4], note_histogram[3], note_histogram[2], note_histogram[1], note_histogram[0]);
+		StringCchPrintf(buff, BUFF_SIZE,"Note histogram: %d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d", note_histogram[11], note_histogram[10], note_histogram[9], note_histogram[8], note_histogram[7], note_histogram[6], note_histogram[5], note_histogram[4], note_histogram[3], note_histogram[2], note_histogram[1], note_histogram[0]);
 		Text(buff);
-		sprintf(buff,"Number of drawn notes: %d", total_drawn_notes);
+		StringCchPrintf(buff, BUFF_SIZE,"Number of drawn notes: %d", total_drawn_notes);
 		Text(buff);
-		sprintf(buff,"matching_scales_count: %d", matching_scales_count);
+		StringCchPrintf(buff, BUFF_SIZE,"matching_scales_count: %d", matching_scales_count);
 		Text(buff);
-		sprintf(buff,"need preditdion update: %d", need_prediction_update);
+		StringCchPrintf(buff, BUFF_SIZE,"need preditdion update: %d", need_prediction_update);
 		Text(buff);
-		sprintf(buff,"fps :%f", GetIO().Framerate);
+		StringCchPrintf(buff, BUFF_SIZE,"fps :%f", GetIO().Framerate);
 		Text(buff);
         End();
         #endif
