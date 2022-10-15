@@ -10,11 +10,8 @@
 #include "audio.h"
 #include "sequencer.h"
 
-//todo: auto open note select
-//todo auto open scale select?
-//todo: auto select sigle availe note
-//todo: pulse on autoselect?
 //todo: redo topbar ui
+//todo: fix playhead drawing over things
 
 using namespace ImGui;
 
@@ -33,10 +30,6 @@ void draw_note(int r, int start, int end, ImDrawList* draw_list) {
 	draw_list->AddRectFilled(point1 + ImVec2( nb, nb), point2 + ImVec2(-nb,-nb), NOTE_DARKER_COL, 5);
 }
 
-inline bool is_sharp(Note note) {
-	return note == La_ || note == So_ || note == Fa_ || note == Re_ || note == Do_;
-}
-
 inline bool scale_has_note(short scale, Note note) {
 	assert((0xf000 & scale) == 0);
 	return scale & (1<<note);
@@ -46,11 +39,11 @@ inline bool scale_contains(short container, short contained) {
 	return (container & contained) == contained;
 }
 
-short scale_rotate(short s, Note base) {
+short scale_rotate_left_by_one(short s) {
 	const short scale_mask = 0xfff;
-	short looped_bits = scale_mask & (s<<base);
-	s = s>>(12-base);
-	return s|looped_bits;
+	short looped_bit = scale_mask & s<<11;
+	s =  s>>1;
+	return s|looped_bit;
 }
 
 short notes_array_to_scale(int arr[12]) {
@@ -76,7 +69,7 @@ inline int time_to_pixels(Time t) {
 }
 
 inline Time pixels_to_time(int p) {
-	return (((double)p * 60.0) / (double) (bpm * CELL_SIZE_W*CELLS_PER_BEAT));
+	return (((double)p * 60.0) / (double) (bpm * CELL_SIZE_W * CELLS_PER_BEAT));
 }
 
 inline void reset() {
@@ -89,10 +82,6 @@ inline void clear_selection() {
 	selected_scale_idx = -1;
 	selected_base_note = -1;
 	need_prediction_update = true;
-}
-
-inline bool is_scale_selected() {
-	return selected_scale_idx != -1 && selected_base_note != -1;
 }
 
 void update_elapsed_time() {
@@ -129,28 +118,31 @@ void select_scale(int n) {
 void make_scale_prediction() {
 	short current_notes = notes_array_to_scale(drawn_notes);
 	for(auto& it : note_histogram) it = 0;
-	matching_scales_count = 0;
+	number_of_matching_scales = 0;
 	for(int j = 0; j < 12; j++) {
 		
-		short note_mask = j ? 1<<(12 - j) : 1;
+		short note_mask = 1 << j;
 		
 		for(int i = 0; i < NUM_SCALES; i++) {
 			if(scale_contains(scale[i].notes, current_notes)) {
 				
 				scale[i].is_matching |= note_mask;
+				assert(scale_has_note(scale[i].is_matching, j));
 				//note histogram is limited to selected note
 				
 				if(selected_base_note == -1 || selected_base_note == j) {
-					matching_scales_count += 1;
+					number_of_matching_scales += 1;
 					
-					for(int k = 0; k < 12; k++)
-						if(scale_has_note(scale[i].notes, k))
-							note_histogram[(12 + k - j) % 12] += 1;
+					for(int k = 0; k < 12; k++) {
+						if(scale_has_note(scale[i].notes, k)) {
+							note_histogram[(k + j) % 12] += 1;
+						}
+					}
 				}
 			}
 			else {scale[i].is_matching &= (0xfff - note_mask);}
 		}
-		current_notes = scale_rotate(current_notes, 1);		
+		current_notes = scale_rotate_left_by_one(current_notes);		
 	}
 	need_prediction_update = false;
 }
@@ -158,7 +150,6 @@ void make_scale_prediction() {
 
 void play_notes() {
 	const int current = (playhead_offset / CELL_SIZE_W) % CELL_GRID_NUM_W;
-	//todo skip if too long has passed to not spam lots of notes
 	for(int i = 0; i < CELL_GRID_NUM_H; i++){
 		for(Node* n = row[i].next; n != NULL; n = n->next) {
 			if(last_played_grid_col <= current) {
@@ -216,6 +207,7 @@ void draw_one_frame(GLFWwindow* window) {
 	static ImDrawList* draw_list = GetWindowDrawList();
 
 	{// TOP BAR
+		PushStyleColor(ImGuiCol_PopupBg, IM_COL32(36,36,36,255));
 		SetCursorPos(ImVec2(0,MENU_BAR));
 		if(BeginMainMenuBar()) {
 			if(BeginMenu("Settings")) {
@@ -268,6 +260,8 @@ void draw_one_frame(GLFWwindow* window) {
 			}
 			EndMainMenuBar();
 		}
+		PopStyleColor();
+
 		if(MyButton("Play"))  playing = true;
 		SameLine();
 
@@ -290,11 +284,31 @@ void draw_one_frame(GLFWwindow* window) {
 			End();
 		}
 		
-		SetNextItemWidth(BASE_BOX_WIDTH);
-		if(BeginCombo("Base Note", note_preview_value, 0)) {
+		bool open_note_selection = false;
+
+		if(predict_mode && selected_base_note == -1 && selected_scale_idx != -1 && !need_prediction_update) {
+			int matching_notes_count = 0;
+			Note to_select;
 			for(int n = 0; n < 12; n++) {
 				short note_mask = 1<<n;
-				if(!predict_mode || selected_scale_idx == -1 || (scale[selected_scale_idx].is_matching & note_mask)) {
+				if(scale[selected_scale_idx].is_matching & note_mask) {
+					to_select = n;
+					matching_notes_count += 1;
+				}
+			}
+			assert(matching_notes_count != 0);
+			if(matching_notes_count == 1) {
+				selected_base_note = to_select;
+			}
+			else if(matching_notes_count > 1) {
+				open_note_selection = true;
+			}
+		}
+		//make max size longer
+		SetNextItemWidth(BASE_BOX_WIDTH);
+		if(BeginCombo("Base Note", note_preview_value, open_note_selection, ImGuiComboFlags_HeightLargest)) {
+			for(int n = 0; n < 12; n++) {
+				if(!predict_mode || selected_scale_idx == -1 || scale_has_note(scale[selected_scale_idx].is_matching, n)) {
 					if(Selectable(note_names[n], selected_base_note == n)) {
 						selected_base_note = n;
 						need_prediction_update = true;
@@ -309,12 +323,12 @@ void draw_one_frame(GLFWwindow* window) {
 		if(selected_scale_idx != -1)
 			scale_preview_value = scale[selected_scale_idx].name;	
 		else if(predict_mode) {
-			StringCchPrintf(buff, BUFF_SIZE, "%d Possible scales", matching_scales_count);
+			StringCchPrintf(buff, BUFF_SIZE, "%d Possible scales", number_of_matching_scales);
 			scale_preview_value = buff;
 		}
 		else  scale_preview_value = "Select scale";
 		SetNextItemWidth(SCALE_BOX_WIDTH);
-		if(BeginCombo("Scale", scale_preview_value, 0)) {
+		if(BeginCombo("Scale", scale_preview_value)) {
 			for(int n = 0; n < NUM_SCALES; n++) {
 				const bool is_selected = (selected_scale_idx == n);
 				if(predict_mode) {
@@ -367,15 +381,19 @@ void draw_one_frame(GLFWwindow* window) {
 			const Note note = row_to_note(i);
 			ImVec4 color;
 			//draw grid background
-			if(predict_mode && !is_scale_selected()) {
+			const bool is_scale_selected = selected_scale_idx != -1 && selected_base_note != -1;
+			if(is_scale_selected) {
+				if(scale_has_note(scale[selected_scale_idx].notes, (12 + note - selected_base_note)%12))
+					draw_list->AddRectFilled(ImVec2(SIDE_BAR, TOP_BAR + CELL_SIZE_H*i), ImVec2(SIDE_BAR + GRID_W, TOP_BAR + CELL_SIZE_H*(i+1) - 1), GRID_BG_COL);
+			}
+			else if(predict_mode) {
 				if(total_drawn_notes) {
-					float density = (float) note_histogram[note] / ((float) matching_scales_count);
+					float density = (float) note_histogram[note] / ((float) number_of_matching_scales);
 					color = lerp(ColorConvertU32ToFloat4(BLACK_COL), ColorConvertU32ToFloat4(GRID_BG_COL), density);
 					draw_list->AddRectFilled(ImVec2(SIDE_BAR, TOP_BAR + CELL_SIZE_H*i), ImVec2(SIDE_BAR + GRID_W, TOP_BAR + CELL_SIZE_H*(i+1) - 1), ColorConvertFloat4ToU32(color));
 				}
 			}
-			else if(scale_has_note(scale_rotate(scale[selected_scale_idx].notes, selected_base_note), note))
-				draw_list->AddRectFilled(ImVec2(SIDE_BAR, TOP_BAR + CELL_SIZE_H*i), ImVec2(SIDE_BAR + GRID_W, TOP_BAR + CELL_SIZE_H*(i+1) - 1), GRID_BG_COL);
+			
 		}
 	}
 
@@ -396,7 +414,8 @@ void draw_one_frame(GLFWwindow* window) {
 		for(int y = 0; y < CELL_GRID_NUM_H; y++) {
 			const Note note = row_to_note(y);
 			const int octave = HIGHEST_NOTE_OCTAVE - y/12;
-			const ImU32 box_col = !is_sharp(note) ? BLACK_NOTE_COL : WHITE_NOTE_COL;
+			const bool is_sharp = note == La_ || note == So_ || note == Fa_ || note == Re_ || note == Do_;
+			const ImU32 box_col = !is_sharp ? BLACK_NOTE_COL : WHITE_NOTE_COL;
 			StringCchPrintf(buff, BUFF_SIZE, "%s%d", note_names[note], octave);
 			TextBox(buff, ImVec2(SIDE_BAR, CELL_SIZE_H-2), ImVec2(0,0), box_col);
 		}
@@ -423,26 +442,28 @@ void draw_one_frame(GLFWwindow* window) {
 }
 
 int wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, int nCmdShow) {
-	assert(!_set_error_mode(_OUT_TO_STDERR));
+	assert(!_set_error_mode(_OUT_TO_STDERR));//send asserts to stderror when debugging
+
 	if(!glfwInit())  return -1;
 	GLFWwindow* window = glfwCreateWindow(WINDOW_W, WINDOW_H, "Sequencer", NULL, NULL);
 	assert(window);
-
 	glfwSetWindowAttrib(window, GLFW_RESIZABLE, GLFW_FALSE);
 	glfwMakeContextCurrent(window);
 	glfwSwapInterval(1); //Enable vsync
 	CreateContext();
 	ImGui_ImplGlfw_InitForOpenGL(window, true);
 	ImGui_ImplOpenGL3_Init("#version 130");
+	
 	ImGuiIO& io = GetIO();
-
 	io.Fonts->AddFontFromFileTTF("../Lucida Console Regular.ttf", FONT_SIZE);
 	io.IniFilename = NULL;//don't use imgui.ini file
-
-	init_xaudio();
-
 	ImGuiStyle& style = GetStyle();
 	style.WindowBorderSize = 0;
+	style.FrameRounding    = 3;
+	style.WindowPadding.x  = 4;
+	style.WindowPadding.y  = 4;
+
+	init_xaudio();
 
 	// Main loop
 	while(!glfwWindowShouldClose(window)) {
@@ -459,7 +480,7 @@ int wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, int n
 		update_elapsed_time();
 
 		if(playing)  play_notes();
-		#if 0
+		#if 1
 		// Debug window
 		ShowStyleEditor();
 		Begin("debug");
@@ -469,7 +490,7 @@ int wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, int n
 		Text(buff);
 		StringCchPrintf(buff, BUFF_SIZE,"Number of drawn notes: %d", total_drawn_notes);
 		Text(buff);
-		StringCchPrintf(buff, BUFF_SIZE,"matching_scales_count: %d", matching_scales_count);
+		StringCchPrintf(buff, BUFF_SIZE,"matching_scales_count: %d", number_of_matching_scales);
 		Text(buff);
 		StringCchPrintf(buff, BUFF_SIZE,"need preditdion update: %d", need_prediction_update);
 		Text(buff);

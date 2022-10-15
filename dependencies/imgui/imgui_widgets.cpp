@@ -1609,7 +1609,7 @@ static float CalcMaxPopupHeightFromItemCount(int items_count)
 	return (g.FontSize + g.Style.ItemSpacing.y) * items_count - g.Style.ItemSpacing.y + (g.Style.WindowPadding.y * 2);
 }
 
-bool ImGui::BeginCombo(const char* label, const char* preview_value, ImGuiComboFlags flags)
+bool ImGui::BeginCombo(const char* label, const char* preview_value, bool force_open, ImGuiComboFlags flags)
 {
 	ImGuiContext& g = *GImGui;
 	ImGuiWindow* window = GetCurrentWindow();
@@ -1637,7 +1637,7 @@ bool ImGui::BeginCombo(const char* label, const char* preview_value, ImGuiComboF
 	bool pressed = ButtonBehavior(bb, id, &hovered, &held);
 	const ImGuiID popup_id = ImHashStr("##ComboPopup", 0, id);
 	bool popup_open = IsPopupOpen(popup_id, ImGuiPopupFlags_None);
-	if (pressed && !popup_open)
+	if (!popup_open && (force_open || pressed))
 	{
 		OpenPopupEx(popup_id, ImGuiPopupFlags_None);
 		popup_open = true;

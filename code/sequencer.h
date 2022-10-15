@@ -81,7 +81,7 @@ const int HIGHEST_NOTE_OCTAVE = 5;
 
 
 //general buffer for temporary strings
-const int BUFF_SIZE = 32;
+const int BUFF_SIZE = 64;
 char buff[BUFF_SIZE]; 
 
 // GLOBAL VARIABLES 
@@ -97,13 +97,13 @@ int playhead_offset = 0; //The playhead is the line that moves when we press pla
 
 // Internal state variables
 int note_histogram[12]; //Sum total of each note in all the matching scales
-int matching_scales_count = 0;
+int number_of_matching_scales = 0;
 int max_r_cell;
 int drawn_notes[12]; //The number of notes of each type currently on the grid
 int total_drawn_notes = 0;
 
 
-bool need_prediction_update = false;
+bool need_prediction_update = true;
 bool is_grid_hovered = false;
 
 // User-modifiable variables:
