@@ -9,6 +9,13 @@
 #include "grid.h"
 #include "audio.h"
 #include "sequencer.h"
+
+//todo: auto open note select
+//todo auto open scale select?
+//todo: auto select sigle availe note
+//todo: pulse on autoselect?
+//todo: redo topbar ui
+
 using namespace ImGui;
 
 // FUNCTIONS
@@ -19,16 +26,11 @@ static inline ImVec2 operator+(const ImVec2& lhs, const ImVec2& rhs) {
 void draw_note(int r, int start, int end, ImDrawList* draw_list) {
 	const ImVec2 point1 = ImVec2(SIDE_BAR + start * CELL_SIZE_W, TOP_BAR + r     * CELL_SIZE_H);
 	const ImVec2 point2 = ImVec2(SIDE_BAR + end   * CELL_SIZE_W, TOP_BAR + (r+1) * CELL_SIZE_H);
-	int nb = NOTE_BORDER_SIZE;
-	auto NOTE_UPPER_COL = GetColorU32(ImGuiCol_CheckMark);
+	const int nb = NOTE_BORDER_SIZE;
 
 	draw_list->AddRectFilled(point1 + ImVec2(-nb,-nb), point2 + ImVec2( nb, nb), NOTE_COL_2, 5);
 	draw_list->AddRectFilled(point1, point2, NOTE_BORDER_COL_2, 5);
-
-	ImDrawFlags flags = ImDrawFlags_RoundCornersTopLeft | ImDrawFlags_RoundCornersTopRight;
 	draw_list->AddRectFilled(point1 + ImVec2( nb, nb), point2 + ImVec2(-nb,-nb), NOTE_DARKER_COL, 5);
-	//draw_list->AddRectFilled(point1 + ImVec2( nb, nb), point2 + ImVec2(-nb ,-nb - (*CELL_SIZE_H/3)), NOTE_UPPER_COL, 5, flags);
-
 }
 
 inline bool is_sharp(Note note) {
@@ -150,6 +152,7 @@ void make_scale_prediction() {
 		}
 		current_notes = scale_rotate(current_notes, 1);		
 	}
+	need_prediction_update = false;
 }
 
 
@@ -193,9 +196,9 @@ inline void handle_input() {
 		playing = true;
 		reset();
 	}
-	if( IsKeyPressed(ImGuiKey_LeftShift,  false) || 
-		IsKeyReleased(ImGuiKey_LeftShift)        ||
-		IsKeyPressed(ImGuiKey_RightShift, false) || 
+	if( IsKeyPressed (ImGuiKey_LeftShift,  false) || 
+		IsKeyReleased(ImGuiKey_LeftShift)         ||
+		IsKeyPressed (ImGuiKey_RightShift, false) || 
 		IsKeyReleased(ImGuiKey_RightShift)) {
 		snap_to_grid = !snap_to_grid;
 	}
@@ -444,10 +447,11 @@ int wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, int n
 	// Main loop
 	while(!glfwWindowShouldClose(window)) {
 		glfwPollEvents();
+
 		if(predict_mode && need_prediction_update) {
 			make_scale_prediction();
-			need_prediction_update = false;
 		}
+
 		draw_one_frame(window);
 		
 		handle_input();
@@ -473,6 +477,7 @@ int wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, int n
 		Text(buff);
         End();
         #endif
+
         Render();
 		ImGui_ImplOpenGL3_RenderDrawData(GetDrawData());
 		glfwSwapBuffers(window);

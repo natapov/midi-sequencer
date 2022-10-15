@@ -150,7 +150,7 @@ void resize_end(int c) {
 	Node* node = resizing_node_end;
 	Node* next = node->next;
 	const int last_end = node->end;
-	c = snap_to_grid ? snap(c) : c;
+	c = snap_to_grid ? snap(c) + grid_note_length : c + 1;
 	const int delta = last_end - c;
 	const int new_len = get_len(node) - delta;
 	if((!next || next->start >= node->start + new_len) && new_len >= MIN_NOTE_LEN) {
