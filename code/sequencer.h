@@ -114,8 +114,13 @@ bool predict_mode    = true;
 bool auto_loop       = true;
 bool shortcut_window = false;
 int grid_note_length = 8; // the size of notes the user is currently drawing, in cells
-bool snap_to_grid    = true;
 bool playing         = false;
+
+bool snap_to_grid_setting = true;
+bool toggle_snap_to_grid  = false;;
+
+//internal:
+bool snap_to_grid    = true;
 
 //selector variables
 Note selected_base_note = -1; 

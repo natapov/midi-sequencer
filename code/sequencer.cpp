@@ -11,8 +11,7 @@
 #include "sequencer.h"
 
 //todo: redo topbar ui
-//todo: fix playhead drawing over things
-
+//hit detection when placing new note doesn't work with snap-to grid
 using namespace ImGui;
 
 // FUNCTIONS
@@ -154,11 +153,11 @@ void play_notes() {
 		for(Node* n = row[i].next; n != NULL; n = n->next) {
 			if(last_played_grid_col <= current) {
 				if(n->start > last_played_grid_col && n->start <= current) {
-					play_sound(n, i);
+					play_sound( i);
 				}
 			}
 			else if(n->start <= current || n->start > last_played_grid_col) {
-				play_sound(n, i);
+				play_sound(i);
 			}
 		}
 	}
@@ -187,12 +186,18 @@ inline void handle_input() {
 		playing = true;
 		reset();
 	}
-	if( IsKeyPressed (ImGuiKey_LeftShift,  false) || 
-		IsKeyReleased(ImGuiKey_LeftShift)         ||
-		IsKeyPressed (ImGuiKey_RightShift, false) || 
-		IsKeyReleased(ImGuiKey_RightShift)) {
-		snap_to_grid = !snap_to_grid;
+
+	if( IsMouseDown(ImGuiMouseButton_Left) && (
+		IsKeyDown(ImGuiKey_LeftShift) || 
+		IsKeyDown(ImGuiKey_RightShift)
+		)) {
+		toggle_snap_to_grid = true;
 	}
+	if(IsMouseReleased(ImGuiMouseButton_Left)){
+		toggle_snap_to_grid = false;
+	}
+	
+	snap_to_grid = toggle_snap_to_grid ? !snap_to_grid_setting : snap_to_grid_setting;
 }
 
 void draw_one_frame(GLFWwindow* window) {
@@ -215,8 +220,8 @@ void draw_one_frame(GLFWwindow* window) {
 					predict_mode = !predict_mode;
 					if(predict_mode) clear_selection();
 				}
-				if(MenuItem("Snap to grid", NULL, snap_to_grid)) {
-					snap_to_grid = !snap_to_grid;
+				if(MenuItem("Snap to grid", NULL, snap_to_grid_setting)) {
+					snap_to_grid_setting = !snap_to_grid_setting;
 				}
 				if(MenuItem("English note names", NULL, english_notes)) {
 					english_notes = !english_notes;
@@ -422,9 +427,6 @@ void draw_one_frame(GLFWwindow* window) {
 		PopStyleVar();
 		PopStyleColor();
 
-		//draw playhead in foreground
-		const int playhead = SIDE_BAR + playhead_offset;
-		GetForegroundDrawList()->AddRectFilled(ImVec2(playhead - LINE_W, TOP_BAR), ImVec2(playhead + LINE_W, GRID_H + TOP_BAR), PLAYHEAD_COL);
 	}
 	max_r_cell = -1;
 	for(int i = 0; i < CELL_GRID_NUM_H; i++) { 
@@ -434,6 +436,11 @@ void draw_one_frame(GLFWwindow* window) {
 				max_r_cell = cur_c->end;
 		}
 	}
+
+	// PLAYHEAD
+	const int playhead = SIDE_BAR + playhead_offset;
+	draw_list->AddRectFilled(ImVec2(playhead - LINE_W, TOP_BAR), ImVec2(playhead + LINE_W, GRID_H + TOP_BAR), PLAYHEAD_COL);
+
 	//we use a invisible button to tell us when to capture mouse input for the grid
 	SetCursorPos(ImVec2(SIDE_BAR,TOP_BAR));
 	InvisibleButton("grid_overlay", ImVec2(WINDOW_W - SIDE_BAR, WINDOW_H), 0);
@@ -456,14 +463,14 @@ int wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, int n
 	
 	ImGuiIO& io = GetIO();
 	io.Fonts->AddFontFromFileTTF("../Lucida Console Regular.ttf", FONT_SIZE);
-	io.IniFilename = NULL;//don't use imgui.ini file
+	io.IniFilename = NULL; //don't use imgui.ini file
 	ImGuiStyle& style = GetStyle();
 	style.WindowBorderSize = 0;
 	style.FrameRounding    = 3;
 	style.WindowPadding.x  = 4;
 	style.WindowPadding.y  = 4;
 
-	init_xaudio();
+	init_synth();
 
 	// Main loop
 	while(!glfwWindowShouldClose(window)) {
@@ -480,7 +487,7 @@ int wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, int n
 		update_elapsed_time();
 
 		if(playing)  play_notes();
-		#if 1
+		#if 0
 		// Debug window
 		ShowStyleEditor();
 		Begin("debug");

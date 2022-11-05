@@ -6,7 +6,6 @@ using namespace ImGui;
 typedef struct Node{
 	int start;
 	int end;
-	IXAudio2SourceVoice* voice;
 	struct Node* next;
 }Node;
 
@@ -35,16 +34,6 @@ inline int get_len(Node* n) {
 	return n->end - n->start;
 }
 
-inline void stop_sound(Node* n){
-	n->voice->Stop(0);
-	n->voice->FlushSourceBuffers();
-}
-
-inline void play_sound(Node* n, int r) {
-	stop_sound(n);
-	n->voice->SubmitSourceBuffer(&buffer[r], NULL);
-	n->voice->Start(0);
-}
 
 Node* init_node(int start, int end, Node* next = NULL) {
 	Node* ret = (Node*) malloc(sizeof(Node));
@@ -52,7 +41,6 @@ Node* init_node(int start, int end, Node* next = NULL) {
 	ret->start = start;
 	ret->end = end;
 	ret->next = next;
-	pXAudio2->CreateSourceVoice(&ret->voice, &wfx);
 	return ret;
 }
 
@@ -89,6 +77,8 @@ Node* get_last_node_that_starts_before_c(int r, int c) {
 
 bool try_place_note(int r, int start, int end, Node* cur) {
 	//todo: if(r+c > sizeofgird)  return false
+
+	if(start < cur->end)  return false;
 
 	Node* next = cur->next;
 	if(!next || end <= next->start) {
@@ -209,7 +199,7 @@ bool try_update_grid() {
 	if(IsMouseClicked(0)) {
 		if(!is_hovering_note) {
 			if(try_place_note(r, snap_c, snap_c + grid_note_length, node_s)) {
-				if(!playing)  play_sound(node_s->next, r);
+				if(!playing)  play_sound(r);
 				start_moving_note(r, c, node_s);
 				return true;
 			}
