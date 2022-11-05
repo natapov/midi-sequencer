@@ -102,7 +102,12 @@ bool try_move_note(int r, int c) {
 	Node* cur = get_last_node_that_starts_before_c(r, c);
 	
 	if(c >= cur->end && (!cur->next || c + moving_node_len <= cur->next->start)) {
-		moving_node->next = cur->next;
+		if(!playing && moving_node_row != r) {
+            stop_all_notes();
+            play_note(r);
+        }
+
+        moving_node->next = cur->next;
 		moving_node->start = c;
 		moving_node->end   = c + moving_node_len;
 		moving_node_prev = cur;
@@ -110,6 +115,9 @@ bool try_move_note(int r, int c) {
 		moving_node_row = r;
 		drawn_notes[row_to_note(r)] += 1;
 		cur->next = moving_node;
+
+
+
 		return true;
 	}
 	assert(moving_node->next == moving_node_prev->next);
@@ -199,7 +207,7 @@ bool try_update_grid() {
 	if(IsMouseClicked(0)) {
 		if(!is_hovering_note) {
 			if(try_place_note(r, snap_c, snap_c + grid_note_length, node_s)) {
-				if(!playing)  play_sound(r);
+				if(!playing)  play_note(r);
 				start_moving_note(r, c, node_s);
 				return true;
 			}
@@ -214,6 +222,9 @@ bool try_update_grid() {
 			return false;
 		}
 	}
+    if(!IsMouseDown(0) && !playing) {
+        stop_all_notes();
+    }
 	if(resizing_node_start) {
 		resize_start(c);
 		return false;

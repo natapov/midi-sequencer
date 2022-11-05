@@ -72,6 +72,7 @@ inline Time pixels_to_time(int p) {
 }
 
 inline void reset() {
+    stop_all_notes();
 	elapsed = 0;
 	last_played_grid_col = -1;
 	max_r_cell = -1;
@@ -153,11 +154,19 @@ void play_notes() {
 		for(Node* n = row[i].next; n != NULL; n = n->next) {
 			if(last_played_grid_col <= current) {
 				if(n->start > last_played_grid_col && n->start <= current) {
-					play_sound( i);
+					play_note(i);
 				}
+                if(n->end   > last_played_grid_col && n->end   <= current) {
+                    stop_note(i);
+                }
 			}
-			else if(n->start <= current || n->start > last_played_grid_col) {
-				play_sound(i);
+			else {
+                if(n->start <= current || n->start > last_played_grid_col) {
+				    play_note(i);
+                }
+                if(n->end   <= current || n->end   > last_played_grid_col) {
+                    stop_note(i);
+                }
 			}
 		}
 	}
@@ -177,7 +186,12 @@ inline void handle_input() {
 		need_prediction_update = try_update_grid();
 		update_note_legth();
 	}
-	if(IsKeyPressed(ImGuiKey_Space))  playing = !playing;
+	if(IsKeyPressed(ImGuiKey_Space)){
+        playing = !playing;
+        if(!playing) {
+            stop_all_notes();
+        }
+    }
 	if(IsKeyPressed(ImGuiKey_Backspace)) {
 		playing = false;
 		reset();
@@ -270,7 +284,10 @@ void draw_one_frame(GLFWwindow* window) {
 		if(MyButton("Play"))  playing = true;
 		SameLine();
 
-		if(MyButton("Pause")) playing = false;
+		if(MyButton("Pause")) {
+            playing = false;
+            stop_all_notes();
+        }
 		SameLine();
 
 		if(MyButton("Stop")) {

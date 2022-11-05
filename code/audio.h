@@ -5,11 +5,18 @@
  
 fluid_synth_t* synth;
 fluid_audio_driver_t* adriver;
-short synthSeqID, mySeqID;
- 
 
-void play_sound(int r) {
-    fluid_synth_noteon(synth, 0, 66, 80);
+void play_note(int r) {
+    fluid_synth_noteon(synth, instrument, 60-r, volume);
+}
+
+void stop_all_notes() {
+    //fluid_synth_all_sounds_off();
+    fluid_synth_all_notes_off(synth, instrument);
+}
+
+void stop_note(int r) {
+    fluid_synth_noteoff(synth, instrument, 60-r);
 }
 void load_soundfont() {
     int fluid_res;

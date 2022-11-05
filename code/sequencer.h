@@ -107,7 +107,9 @@ bool need_prediction_update = true;
 bool is_grid_hovered = false;
 
 // User-modifiable variables:
-int bpm = 220; //beats per minute
+int bpm        = 220; //beats per minute
+int volume     = 100;
+int instrument = 1;
 int note_length_idx  = 2;
 int beats_per_bar    = 4; // the time signiture of the music
 bool predict_mode    = true;
