@@ -7,22 +7,16 @@ fluid_synth_t* synth;
 fluid_audio_driver_t* adriver;
 
 void play_note(int r) {
-    fluid_synth_noteon(synth, instrument, 60-r, volume);
+    fluid_synth_noteon(synth, 0, 60-r, volume);
 }
 
 void stop_all_notes() {
     //fluid_synth_all_sounds_off();
-    fluid_synth_all_notes_off(synth, instrument);
+    fluid_synth_all_notes_off(synth, 0);
 }
 
 void stop_note(int r) {
-    fluid_synth_noteoff(synth, instrument, 60-r);
-}
-void load_soundfont() {
-    int fluid_res;
-    // put your own path here
-    fluid_res = fluid_synth_sfload(synth, "../build/GeneralUser GS.sf2", 1);
-    assert(fluid_res != FLUID_FAILED);
+    fluid_synth_noteoff(synth, 0, 60-r);
 }
 
 void init_synth() {
@@ -33,7 +27,9 @@ void init_synth() {
     synth = new_fluid_synth(settings);
     assert(synth);
 
-    load_soundfont();
+    const int fluid_res = fluid_synth_sfload(synth, "FluidR3_GM.sf2", 1);
+    assert(fluid_res != FLUID_FAILED);
+
     adriver = new_fluid_audio_driver(settings, synth);
     assert(adriver);
 }

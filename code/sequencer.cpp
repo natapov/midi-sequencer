@@ -11,7 +11,6 @@
 #include "sequencer.h"
 
 //todo: redo topbar ui
-//hit detection when placing new note doesn't work with snap-to grid
 using namespace ImGui;
 
 // FUNCTIONS
@@ -326,6 +325,25 @@ void draw_one_frame(GLFWwindow* window) {
 				open_note_selection = true;
 			}
 		}
+
+        //make max size longer
+        const char* instrument_preview_value = midi_instruments[instrument];
+
+        SetNextItemWidth(BASE_BOX_WIDTH);
+        if(BeginCombo("Instrument", instrument_preview_value)) {
+            for(int n = 0; n < 128; n++) {
+                if(Selectable(midi_instruments[n], instrument == n)) {
+                    instrument = n;
+                    int res = fluid_synth_program_change(synth, 0, instrument);
+                    assert(res == FLUID_OK);
+                }
+                if (instrument == n)
+                    SetItemDefaultFocus();
+            }
+            EndCombo();
+        }
+        SameLine();
+
 		//make max size longer
 		SetNextItemWidth(BASE_BOX_WIDTH);
 		if(BeginCombo("Base Note", note_preview_value, open_note_selection, ImGuiComboFlags_HeightLargest)) {
@@ -504,9 +522,9 @@ int wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, int n
 		update_elapsed_time();
 
 		if(playing)  play_notes();
-		#if 0
+		#if 1
 		// Debug window
-		ShowStyleEditor();
+		//ShowStyleEditor();
 		Begin("debug");
 		StringCchPrintf(buff, BUFF_SIZE,"Notes: %d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d", drawn_notes[11], drawn_notes[10], drawn_notes[9], drawn_notes[8], drawn_notes[7], drawn_notes[6], drawn_notes[5], drawn_notes[4], drawn_notes[3], drawn_notes[2], drawn_notes[1], drawn_notes[0]);
 		Text(buff);
@@ -520,6 +538,16 @@ int wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, int n
 		Text(buff);
 		StringCchPrintf(buff, BUFF_SIZE,"fps :%f", GetIO().Framerate);
 		Text(buff);
+        int sfont_id, bank_num, preset_num;
+        fluid_synth_get_program(synth, 0, &sfont_id, &bank_num, &preset_num);
+
+        StringCchPrintf(buff, BUFF_SIZE,"sfont id :%d", sfont_id);
+        Text(buff);
+        StringCchPrintf(buff, BUFF_SIZE,"bank num :%d", bank_num);
+        Text(buff);
+        StringCchPrintf(buff, BUFF_SIZE,"preset num :%d", preset_num);
+        Text(buff);
+
         End();
         #endif
 

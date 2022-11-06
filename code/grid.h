@@ -102,8 +102,8 @@ bool try_move_note(int r, int c) {
 	Node* cur = get_last_node_that_starts_before_c(r, c);
 	
 	if(c >= cur->end && (!cur->next || c + moving_node_len <= cur->next->start)) {
-		if(!playing && moving_node_row != r) {
-            stop_all_notes();
+		stop_note(moving_node_row);
+        if(!playing && moving_node_row != r) {
             play_note(r);
         }
 
