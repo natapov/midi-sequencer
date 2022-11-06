@@ -27,7 +27,7 @@ void init_synth() {
     synth = new_fluid_synth(settings);
     assert(synth);
 
-    const int fluid_res = fluid_synth_sfload(synth, "FluidR3_GM.sf2", 1);
+    const int fluid_res = fluid_synth_sfload(synth, "TimGM.sf2", 1);
     assert(fluid_res != FLUID_FAILED);
 
     adriver = new_fluid_audio_driver(settings, synth);

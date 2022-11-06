@@ -485,12 +485,20 @@ void draw_one_frame(GLFWwindow* window) {
 
 int wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, int nCmdShow) {
 	assert(!_set_error_mode(_OUT_TO_STDERR));//send asserts to stderror when debugging
+    
 
 	if(!glfwInit())  return -1;
-	GLFWwindow* window = glfwCreateWindow(WINDOW_W, WINDOW_H, "Sequencer", NULL, NULL);
-	assert(window);
+
+    GLFWwindow* window = glfwCreateWindow(WINDOW_W, WINDOW_H, "Sequencer", NULL, NULL);
+    assert(window);
+
+    glClearColor(0, 0, 0, 1.0f);// no white flash on startup
+    glfwSwapBuffers(window);
+	
 	glfwSetWindowAttrib(window, GLFW_RESIZABLE, GLFW_FALSE);
 	glfwMakeContextCurrent(window);
+
+
 	glfwSwapInterval(1); //Enable vsync
 	CreateContext();
 	ImGui_ImplGlfw_InitForOpenGL(window, true);
@@ -504,7 +512,6 @@ int wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, int n
 	style.FrameRounding    = 3;
 	style.WindowPadding.x  = 4;
 	style.WindowPadding.y  = 4;
-
 	init_synth();
 
 	// Main loop

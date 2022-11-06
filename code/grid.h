@@ -76,9 +76,8 @@ Node* get_last_node_that_starts_before_c(int r, int c) {
 }
 
 bool try_place_note(int r, int start, int end, Node* cur) {
-	//todo: if(r+c > sizeofgird)  return false
-
-	if(start < cur->end)  return false;
+	if(end > CELL_GRID_NUM_W)  return false;
+	if(start < cur->end)       return false;
 
 	Node* next = cur->next;
 	if(!next || end <= next->start) {
@@ -96,7 +95,7 @@ bool try_move_note(int r, int c) {
 	Node* moving_node = moving_node_prev->next;	
 	c = snap_to_grid ? snap(c) : c - moving_node_offset;
 	if(c == moving_node->start && r == moving_node_row)  return false;
-
+    if(c + moving_node_len > CELL_GRID_NUM_W)  return false;
 	moving_node_prev->next = moving_node->next;
 	
 	Node* cur = get_last_node_that_starts_before_c(r, c);
