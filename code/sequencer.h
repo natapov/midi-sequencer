@@ -16,37 +16,43 @@ enum : Note {
 	Do_ = 1,
 	Do  = 0,
 };
-// 
+
+
 
 // CONFIG
 // these are mostly sizes of different ui elements 
+const int SCALE = 16;
+const int FONT_SIZE = SCALE * 1.25;
+
 const int CELLS_PER_BEAT = 8;//this numbers of cells in a beat (a quarter note)
-
-const int CELL_GRID_NUM_H = 35;
+const int CELL_GRID_NUM_H = 36;
 const int CELL_GRID_NUM_W = 40 * CELLS_PER_BEAT;
-const int CELL_SIZE_W = 4; //in pixels
-const int CELL_SIZE_H = 20;
-const int NOTE_BORDER_SIZE = 1;
+const int CELL_SIZE_W = SCALE / 4;
+const int CELL_SIZE_H = SCALE * 1.2;
+const int NOTE_BORDER_SIZE = SCALE / 16;
 
-const int MENU_BAR = 35;
-const int TOP_BAR  = 70 + MENU_BAR;
-const int SIDE_BAR = 40;
+const int MENU_FRAME_PADDING = 4;
+
+const int BUFFER     = SCALE / 4;
+const int MENU_BAR   = FONT_SIZE + MENU_FRAME_PADDING * 2 ; // this is also the defualt button height 
+const int TOP_BAR    = (MENU_BAR + BUFFER) * 2;
+const int BOTTOM_BAR = MENU_BAR + BUFFER * 2;
+const int SIDE_BAR   = SCALE * 2.5;
 const int GRID_W = CELL_SIZE_W * CELL_GRID_NUM_W + 1;
 const int GRID_H = CELL_SIZE_H * CELL_GRID_NUM_H;
 const int WINDOW_W = GRID_W + SIDE_BAR;
-const int WINDOW_H = GRID_H + TOP_BAR;
-const int LINE_W = 1; //this is multiplied by two since a line seperates two cells symetrically
+const int WINDOW_H = GRID_H + TOP_BAR + BOTTOM_BAR;
+const int LINE_W = SCALE / 16; //this is multiplied by two since a line seperates two cells symetrically
 
 const int RESIZE_HANDLE_SIZE = CELL_SIZE_W * 2;
-const int MIN_NOTE_LEN = 2;
+const int MIN_NOTE_LEN = 2; // IN CELLS
 
-const int BPM_BOX_WIDTH   = 105;
-const int SCALE_BOX_WIDTH = 300;
-const int BASE_BOX_WIDTH  = 85;
+const int HIGHEST_MIDI_NOTE = 83; //SI5 
 
-const int FONT_SIZE = 20;
+const int BPM_BOX_WIDTH   = SCALE * 6.5;
+const int SCALE_BOX_WIDTH = SCALE * 18;
+const int BASE_BOX_WIDTH  = SCALE * 5;
 
-const int NOTE_FADE_SIZE = CELL_SIZE_H/3;
 
 // COLORS
 const ImU32 BAR_LINE_COL      = IM_COL32(100, 100, 100, 255);
@@ -206,8 +212,7 @@ const char* midi_instruments[128] = {
 "127 Applause",
 "128 Gunshot" };
 
-const int HIGHEST_NOTE = So_; 
-const int HIGHEST_NOTE_OCTAVE = 5;
+const int HIGHEST_OCTAVE = 5;
 
 
 //general buffer for temporary strings
@@ -237,9 +242,9 @@ bool need_prediction_update = true;
 bool is_grid_hovered = false;
 
 // User-modifiable variables:
-int bpm        = 220; //beats per minute
-int volume     = 127;
-int instrument = 0;
+int bpm              = 220; //beats per minute
+int volume           = 110;
+int instrument       = 0;
 int note_length_idx  = 2;
 int beats_per_bar    = 4; // the time signiture of the music
 bool predict_mode    = true;

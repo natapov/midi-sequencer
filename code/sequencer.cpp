@@ -4,17 +4,18 @@
 #include "imgui_impl_glfw.h"
 #include "imgui_impl_opengl3.h"
 #include "strsafe.h"
-#include "GLFW/glfw3.h"
+#include "glfw/glfw3.h"
 #include "scales.h"
 #include "grid.h"
 #include "audio.h"
 #include "sequencer.h"
-
-//todo: redo topbar ui
+#include "dwmapi.h"
+#define GLFW_EXPOSE_NATIVE_WIN32
+#include "glfw/glfw3native.h"
 using namespace ImGui;
 
 // FUNCTIONS
-static inline ImVec2 operator+(const ImVec2& lhs, const ImVec2& rhs) { 
+inline ImVec2 operator+(const ImVec2& lhs, const ImVec2& rhs) { 
 	return ImVec2(lhs.x + rhs.x, lhs.y + rhs.y); 
 }
 
@@ -40,7 +41,7 @@ inline bool scale_contains(short container, short contained) {
 short scale_rotate_left_by_one(short s) {
 	const short scale_mask = 0xfff;
 	short looped_bit = scale_mask & s<<11;
-	s =  s>>1;
+	s = s>>1;
 	return s|looped_bit;
 }
 
@@ -59,7 +60,7 @@ inline ImVec4 lerp(ImVec4 a, ImVec4 b, float t) {
 }
 
 inline int row_to_note(int n) {
-	return 11 - ((n + 11 - HIGHEST_NOTE) % 12);
+	return 11 - (n % 12);
 }
 
 inline int time_to_pixels(Time t) {
@@ -217,16 +218,115 @@ void draw_one_frame(GLFWwindow* window) {
 	ImGui_ImplOpenGL3_NewFrame();
 	ImGui_ImplGlfw_NewFrame();
 	NewFrame();
-	SetNextWindowSize(ImVec2(WINDOW_W, WINDOW_H));
-	SetNextWindowPos(ImVec2(0,0));
-	PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0,0)); 
-	Begin("main window", NULL, MAIN_WINDOW_FLAGS);
+
+    if(shortcut_window) {
+        Begin("Keyboard Shortcuts", &shortcut_window, ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoResize);
+        Text("Space - Play/Pause\nBackspace - Stop\nEnter - Play from start\nHold Shift - Toggle snap to grid\nMouse Wheel - Change note length");
+        End();
+    }
+
+    SetNextWindowSize(ImVec2(WINDOW_W, WINDOW_H));
+    SetNextWindowPos(ImVec2(0,0));
+    PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0,0));
+    Begin("main window", NULL, MAIN_WINDOW_FLAGS);
 	PopStyleVar();
+
 	static ImDrawList* draw_list = GetWindowDrawList();
 
+    {// BOTTOM BAR
+        SetCursorPos(ImVec2(BUFFER, TOP_BAR + GRID_H + BUFFER));
+        AlignTextToFramePadding();
+        Text("Scale:");
+        SameLine();
+        const char* scale_preview_value;
+        if(selected_scale_idx != -1)
+            scale_preview_value = scale[selected_scale_idx].name;   
+        else if(predict_mode) {
+            StringCchPrintf(buff, BUFF_SIZE, "%d Possible scales", number_of_matching_scales);
+            scale_preview_value = buff;
+        }
+        else  scale_preview_value = "Select scale";
+        SetNextItemWidth(SCALE_BOX_WIDTH);
+        if(BeginCombo("##Scale", scale_preview_value)) {
+            for(int n = 0; n < NUM_SCALES; n++) {
+                const bool is_selected = (selected_scale_idx == n);
+                if(predict_mode) {
+                    if((selected_base_note == -1 && scale[n].is_matching) || (scale[n].is_matching & (1<<selected_base_note))) {
+                        if(scale[n].number_of_notes == total_drawn_notes) {
+                            StringCchPrintf(buff, BUFF_SIZE, "%s [Exact match]", scale[n].name);
+                            if(Selectable(buff, is_selected))
+                                select_scale(n);
+                        }
+                        else if(Selectable(scale[n].name, is_selected))
+                            select_scale(n);            
+                    }
+                }
+                else if(Selectable(scale[n].name, is_selected))
+                    select_scale(n);
+            }
+            EndCombo();
+        }
+        SameLine();
+        SetCursorPosY(TOP_BAR + GRID_H + BUFFER);
+        Text("Base Note:");
+        SameLine();
+        bool open_note_selection = false;
+        if(selected_scale_idx != -1 && predict_mode && selected_base_note == -1 && !need_prediction_update) {
+            int matching_notes_count = 0;
+            Note to_select;
+            for(int n = 0; n < 12; n++) {
+                short note_mask = 1<<n;
+                if(scale[selected_scale_idx].is_matching & note_mask) {
+                    to_select = n;
+                    matching_notes_count += 1;
+                }
+            }
+            assert(matching_notes_count != 0);
+            if(matching_notes_count == 1) {
+                selected_base_note = to_select;
+            }
+            else if(matching_notes_count > 1) {
+                open_note_selection = true;
+            }
+        }
+        
+        const char* note_preview_value;
+        if(selected_base_note != -1)
+            note_preview_value = note_names[selected_base_note];
+        else  note_preview_value = "---";
+
+        SetNextItemWidth(BASE_BOX_WIDTH);
+        if(BeginCombo("##Base Note", note_preview_value, open_note_selection, ImGuiComboFlags_HeightLargest)) {
+            for(int n = 0; n < 12; n++) {
+                if(!predict_mode || selected_scale_idx == -1 || scale_has_note(scale[selected_scale_idx].is_matching, n)) {
+                    if(Selectable(note_names[n], selected_base_note == n)) {
+                        selected_base_note = n;
+                        need_prediction_update = true;
+                    }
+                }
+            }
+            EndCombo();
+        }
+
+        SameLine();
+        if(Button("Clear Scale Selection")) {
+            clear_selection();
+        }
+        SetCursorPos(ImVec2(WINDOW_W - SCALE * 9 , TOP_BAR + GRID_H + BUFFER));
+        if(Button("Clear Notes")) {
+            reset();
+            playing = false;
+            total_drawn_notes = 0;
+            for(auto& it : drawn_notes) it = 0;
+            free_all_nodes();
+            need_prediction_update = true;
+        }
+
+    }
 	{// TOP BAR
-		PushStyleColor(ImGuiCol_PopupBg, IM_COL32(36,36,36,255));
-		SetCursorPos(ImVec2(0,MENU_BAR));
+		PushStyleColor(ImGuiCol_PopupBg, BLACK_COL);
+        PushStyleColor(ImGuiCol_MenuBarBg, BLACK_COL);
+        PushStyleColor(ImGuiCol_Border, IM_COL32(80,80,86,128));
 		if(BeginMainMenuBar()) {
 			if(BeginMenu("Settings")) {
 				if(MenuItem("Predict Mode", NULL, predict_mode)) {
@@ -278,8 +378,10 @@ void draw_one_frame(GLFWwindow* window) {
 			}
 			EndMainMenuBar();
 		}
-		PopStyleColor();
+        //PopStyleVar();
+		PopStyleColor(3);
 
+        SetCursorPos(ImVec2(BUFFER, MENU_BAR + BUFFER));
 		if(MyButton("Play"))  playing = true;
 		SameLine();
 
@@ -294,47 +396,16 @@ void draw_one_frame(GLFWwindow* window) {
 			reset();
 		}
 		SameLine();
+		Text("Instrument:");
+        SameLine();
 
-		const char* note_preview_value;
-		if(selected_base_note != -1)
-			note_preview_value = note_names[selected_base_note];
-		else  note_preview_value = "---";
-		if(shortcut_window) {
-			Begin("Keyboard Shortcuts", &shortcut_window, ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoResize);
-			Text("Space - Play/Pause\nBackspace - Stop\nEnter - Play from start\nHold Shift - Toggle snap to grid\nMouse Wheel - Change note length");
-			End();
-		}
-		
-		bool open_note_selection = false;
-
-		if(predict_mode && selected_base_note == -1 && selected_scale_idx != -1 && !need_prediction_update) {
-			int matching_notes_count = 0;
-			Note to_select;
-			for(int n = 0; n < 12; n++) {
-				short note_mask = 1<<n;
-				if(scale[selected_scale_idx].is_matching & note_mask) {
-					to_select = n;
-					matching_notes_count += 1;
-				}
-			}
-			assert(matching_notes_count != 0);
-			if(matching_notes_count == 1) {
-				selected_base_note = to_select;
-			}
-			else if(matching_notes_count > 1) {
-				open_note_selection = true;
-			}
-		}
-
-        //make max size longer
         const char* instrument_preview_value = midi_instruments[instrument];
-
-        SetNextItemWidth(BASE_BOX_WIDTH);
-        if(BeginCombo("Instrument", instrument_preview_value)) {
+        SetNextItemWidth(SCALE * 24);
+        if(BeginCombo("##no label", instrument_preview_value)) {
             for(int n = 0; n < 128; n++) {
                 if(Selectable(midi_instruments[n], instrument == n)) {
                     instrument = n;
-                    int res = fluid_synth_program_change(synth, 0, instrument);
+                    const int res = fluid_synth_program_change(synth, 0, instrument);
                     assert(res == FLUID_OK);
                 }
                 if (instrument == n)
@@ -342,75 +413,20 @@ void draw_one_frame(GLFWwindow* window) {
             }
             EndCombo();
         }
+		SameLine();
+        Text("BPM:");
         SameLine();
-
-		//make max size longer
-		SetNextItemWidth(BASE_BOX_WIDTH);
-		if(BeginCombo("Base Note", note_preview_value, open_note_selection, ImGuiComboFlags_HeightLargest)) {
-			for(int n = 0; n < 12; n++) {
-				if(!predict_mode || selected_scale_idx == -1 || scale_has_note(scale[selected_scale_idx].is_matching, n)) {
-					if(Selectable(note_names[n], selected_base_note == n)) {
-						selected_base_note = n;
-						need_prediction_update = true;
-					}
-				}
-			}
-			EndCombo();
-		}
-		SameLine();
-
-		const char* scale_preview_value;
-		if(selected_scale_idx != -1)
-			scale_preview_value = scale[selected_scale_idx].name;	
-		else if(predict_mode) {
-			StringCchPrintf(buff, BUFF_SIZE, "%d Possible scales", number_of_matching_scales);
-			scale_preview_value = buff;
-		}
-		else  scale_preview_value = "Select scale";
-		SetNextItemWidth(SCALE_BOX_WIDTH);
-		if(BeginCombo("Scale", scale_preview_value)) {
-			for(int n = 0; n < NUM_SCALES; n++) {
-				const bool is_selected = (selected_scale_idx == n);
-				if(predict_mode) {
-					if((selected_base_note == -1 && scale[n].is_matching) || (scale[n].is_matching & (1<<selected_base_note))) {
-						if(scale[n].number_of_notes == total_drawn_notes) {
-							StringCchPrintf(buff, BUFF_SIZE, "%s [Exact match]", scale[n].name);
-							if(Selectable(buff, is_selected))
-								select_scale(n);
-						}
-						else if(Selectable(scale[n].name, is_selected))
-							select_scale(n);			
-					}
-				}
-				else if(Selectable(scale[n].name, is_selected))
-					select_scale(n);
-			}
-			EndCombo();
-		}
-		SameLine();
-		if(Button("Clear Selection")) {
-			clear_selection();
-		}
-
-		//SECOND LINE
-		if(Button("Clear All")) {
-			reset();
-			playing = false;
-			total_drawn_notes = 0;
-			for(auto& it : drawn_notes) it = 0;
-			free_all_nodes();
-			need_prediction_update = true;
-		}
-		SameLine();
 		SetNextItemWidth(BPM_BOX_WIDTH);
-		if(InputInt("BPM", &bpm)) {
+		if(InputInt("##BPM", &bpm)) {
 			if(bpm > 999) bpm = 999;
 			if(bpm < 10)  bpm =  10;
 			elapsed = pixels_to_time(playhead_offset); //how much time _would have_ passed had we gotten to this pixel at current bpm
 		}
 		SameLine();
-		SetNextItemWidth(BPM_BOX_WIDTH*4);
-		if(Combo("a", &note_length_idx, "1\0001/2\0001/4\0001/8\0001/16\0\0")) {
+        Text("Note Length:");
+        SameLine();
+		SetNextItemWidth(BPM_BOX_WIDTH);
+		if(Combo("##e", &note_length_idx, "1\0001/2\0001/4\0001/8\0001/16\0\0")) {
 			grid_note_length = (CELLS_PER_BEAT*4) >> note_length_idx;
 		}
 	}
@@ -453,7 +469,7 @@ void draw_one_frame(GLFWwindow* window) {
 		SetCursorPos(ImVec2(0,TOP_BAR));
 		for(int y = 0; y < CELL_GRID_NUM_H; y++) {
 			const Note note = row_to_note(y);
-			const int octave = HIGHEST_NOTE_OCTAVE - y/12;
+			const int octave = HIGHEST_OCTAVE - y/12;
 			const bool is_sharp = note == La_ || note == So_ || note == Fa_ || note == Re_ || note == Do_;
 			const ImU32 box_col = !is_sharp ? BLACK_NOTE_COL : WHITE_NOTE_COL;
 			StringCchPrintf(buff, BUFF_SIZE, "%s%d", note_names[note], octave);
@@ -478,41 +494,49 @@ void draw_one_frame(GLFWwindow* window) {
 
 	//we use a invisible button to tell us when to capture mouse input for the grid
 	SetCursorPos(ImVec2(SIDE_BAR,TOP_BAR));
-	InvisibleButton("grid_overlay", ImVec2(WINDOW_W - SIDE_BAR, WINDOW_H), 0);
+	InvisibleButton("grid_overlay", ImVec2(GRID_W, GRID_H), 0);
 	is_grid_hovered = IsItemHovered();	
 	End();//main window
 }
 
 int wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, int nCmdShow) {
-	assert(!_set_error_mode(_OUT_TO_STDERR));//send asserts to stderror when debugging
+	assert(!_set_error_mode(_OUT_TO_STDERR));//send asserts to stderr when debugging
     
-
-	if(!glfwInit())  return -1;
-
+    glfwInit();
+    glfwWindowHint(GLFW_VISIBLE, false);
+    glfwWindowHint(GLFW_RESIZABLE, false);
     GLFWwindow* window = glfwCreateWindow(WINDOW_W, WINDOW_H, "Sequencer", NULL, NULL);
-    assert(window);
+    
+    CreateContext();
+    glfwMakeContextCurrent(window);
+    ImGui_ImplGlfw_InitForOpenGL(window, true);
+    ImGui_ImplOpenGL3_Init("#version 130"); 
 
-    glClearColor(0, 0, 0, 1.0f);// no white flash on startup
+    ImGuiIO& io = GetIO();
+    io.Fonts->AddFontFromFileTTF("Lucida Console Regular.ttf", FONT_SIZE);
+    ImGuiStyle& style = GetStyle();
+    style.WindowBorderSize = 0;
+    style.FrameRounding    = 3;
+    style.WindowPadding.x  = 4;
+    style.WindowPadding.y  = 4;
+
+    draw_one_frame(window);
+    Render();
+    ImGui_ImplOpenGL3_RenderDrawData(GetDrawData());
+    
+    // this is how we make the title bar black
+    const BOOL USE_DARK_MODE = true;
+    auto hWnd = glfwGetWin32Window(window);
+    DwmSetWindowAttribute(hWnd, 20, &USE_DARK_MODE, sizeof(BOOL));
+    SetWindowPos(hWnd, NULL, 0,0,0,0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_HIDEWINDOW);
+    SetWindowPos(hWnd, NULL, 0,0,0,0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_SHOWWINDOW);
+    
     glfwSwapBuffers(window);
-	
-	glfwSetWindowAttrib(window, GLFW_RESIZABLE, GLFW_FALSE);
-	glfwMakeContextCurrent(window);
 
-
-	glfwSwapInterval(1); //Enable vsync
-	CreateContext();
-	ImGui_ImplGlfw_InitForOpenGL(window, true);
-	ImGui_ImplOpenGL3_Init("#version 130");
-	
-	ImGuiIO& io = GetIO();
-	io.Fonts->AddFontFromFileTTF("../Lucida Console Regular.ttf", FONT_SIZE);
-	io.IniFilename = NULL; //don't use imgui.ini file
-	ImGuiStyle& style = GetStyle();
-	style.WindowBorderSize = 0;
-	style.FrameRounding    = 3;
-	style.WindowPadding.x  = 4;
-	style.WindowPadding.y  = 4;
-	init_synth();
+    //initializations we do after displaying the first frame
+    glfwSwapInterval(1); //Enable vsync
+    io.IniFilename = NULL; //don't use imgui.ini file
+    init_synth();
 
 	// Main loop
 	while(!glfwWindowShouldClose(window)) {
@@ -529,9 +553,10 @@ int wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, int n
 		update_elapsed_time();
 
 		if(playing)  play_notes();
-		#if 1
+		
+        #if 0
 		// Debug window
-		//ShowStyleEditor();
+		ShowStyleEditor();
 		Begin("debug");
 		StringCchPrintf(buff, BUFF_SIZE,"Notes: %d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d", drawn_notes[11], drawn_notes[10], drawn_notes[9], drawn_notes[8], drawn_notes[7], drawn_notes[6], drawn_notes[5], drawn_notes[4], drawn_notes[3], drawn_notes[2], drawn_notes[1], drawn_notes[0]);
 		Text(buff);
@@ -547,14 +572,12 @@ int wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, int n
 		Text(buff);
         int sfont_id, bank_num, preset_num;
         fluid_synth_get_program(synth, 0, &sfont_id, &bank_num, &preset_num);
-
         StringCchPrintf(buff, BUFF_SIZE,"sfont id :%d", sfont_id);
         Text(buff);
         StringCchPrintf(buff, BUFF_SIZE,"bank num :%d", bank_num);
         Text(buff);
         StringCchPrintf(buff, BUFF_SIZE,"preset num :%d", preset_num);
         Text(buff);
-
         End();
         #endif
 
@@ -563,6 +586,7 @@ int wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, int n
 		glfwSwapBuffers(window);
 	}
 	// Cleanup
+    delete_synth();
 	ImGui_ImplOpenGL3_Shutdown();
 	ImGui_ImplGlfw_Shutdown();
 	DestroyContext();

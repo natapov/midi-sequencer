@@ -46,6 +46,7 @@ Node* init_node(int start, int end, Node* next = NULL) {
 
 void erase_note(int r, int c, Node* cur, Node* last) {
 	assert(cur);
+    stop_note(r);
 	last->next = cur->next;
 	free(cur);
 	drawn_notes[row_to_note(r)] -= 1;
@@ -87,7 +88,6 @@ bool try_place_note(int r, int start, int end, Node* cur) {
 		total_drawn_notes += 1;
 		return true;
 	}
-
 	return false;
 }
 	

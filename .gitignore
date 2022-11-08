@@ -2,4 +2,4 @@
 *.ilk
 *.pdb
 *.rdbg
-build/sequencer.exe
+build/*
