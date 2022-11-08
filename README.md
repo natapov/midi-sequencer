@@ -6,4 +6,4 @@ The idea is as you place notes the UI suggests notes that would sound good by ch
 There's a precompiled executable for Windows 64bit in the "release" folder.
 
 Work in progress screenshot:
-![image](https://user-images.githubusercontent.com/73648320/197862064-2eb3abee-a00f-428f-abee-6f887c8ecd3e.png)
+![image](https://user-images.githubusercontent.com/73648320/200623672-a6fac1d8-3c5b-4b1d-b728-9792157e87f7.png)
