@@ -6,3 +6,4 @@ cl /O2 /I ..\dependencies\ /I ..\dependencies\imgui ..\code\*.cpp ..\dependencie
 mkdir ..\release 2> nul
 copy sequencer.exe ..\release\sequencer.exe
 popd
+

@@ -202,10 +202,10 @@ inline void handle_input() {
 	}
 
 	if( IsMouseDown(ImGuiMouseButton_Left) && (
-		IsKeyDown(ImGuiKey_LeftShift) || 
-		IsKeyDown(ImGuiKey_RightShift)
+		IsKeyPressed(ImGuiKey_LeftShift,  false) || 
+		IsKeyPressed(ImGuiKey_RightShift, false)
 		)) {
-		toggle_snap_to_grid = true;
+		toggle_snap_to_grid = !toggle_snap_to_grid;
 	}
 	if(IsMouseReleased(ImGuiMouseButton_Left)){
 		toggle_snap_to_grid = false;
