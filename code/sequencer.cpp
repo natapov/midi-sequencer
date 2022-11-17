@@ -12,11 +12,31 @@
 #include "dwmapi.h"
 #define GLFW_EXPOSE_NATIVE_WIN32
 #include "glfw/glfw3native.h"
+#include "commdlg.h"
+
 using namespace ImGui;
 
 // FUNCTIONS
 inline ImVec2 operator+(const ImVec2& lhs, const ImVec2& rhs) { 
 	return ImVec2(lhs.x + rhs.x, lhs.y + rhs.y); 
+}
+
+void load_soundfont() {
+    OPENFILENAME ofn = {};
+    ofn.lStructSize = sizeof(ofn);
+    ofn.lpstrFile = buff;
+    ofn.lpstrFile[0] = '\0';// Set lpstrFile[0] to '\0' so that the content isn't used 
+    ofn.nMaxFile = BUFF_SIZE;
+    ofn.lpstrFilter = "Soundfont\0*.SF2\0";
+    ofn.nFilterIndex = 1;
+    ofn.Flags = OFN_PATHMUSTEXIST | OFN_FILEMUSTEXIST;
+    
+    if(GetOpenFileName(&ofn)) {
+        fluid_synth_sfunload(synth, 1, 0);
+        fluid_synth_sfload(synth, buff, 1); //todo: does the last thing do anything   
+        //fluid_synth_sfreload(synth, 1);
+    }
+    
 }
 
 void draw_note(int r, int start, int end, ImDrawList* draw_list) {
@@ -340,7 +360,7 @@ void draw_one_frame(GLFWwindow* window) {
 					english_notes = !english_notes;
 					note_names = english_notes ? english_note_names : regular_note_names;
 				}
-				if(BeginMenu("Time Signiture")) {
+				if(BeginMenu("Time Signature")) {
 					if(MenuItem("1/4", NULL, beats_per_bar == 1)) {
 						beats_per_bar = 1;
 					}
@@ -364,7 +384,9 @@ void draw_one_frame(GLFWwindow* window) {
 				ImGui::EndMenu();
 			}
 			if(BeginMenu("File")) {
-				if(MenuItem("Export MIDI")) {}
+				if(MenuItem("Load Soundfont File")) {
+                    load_soundfont();
+                }
 				ImGui::EndMenu();
 			}
 			if(BeginMenu("Help")) {
@@ -449,7 +471,6 @@ void draw_one_frame(GLFWwindow* window) {
 					draw_list->AddRectFilled(ImVec2(SIDE_BAR, TOP_BAR + CELL_SIZE_H*i), ImVec2(SIDE_BAR + GRID_W, TOP_BAR + CELL_SIZE_H*(i+1) - 1), ColorConvertFloat4ToU32(color));
 				}
 			}
-			
 		}
 	}
 
@@ -501,7 +522,7 @@ void draw_one_frame(GLFWwindow* window) {
 
 int wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, int nCmdShow) {
 	assert(!_set_error_mode(_OUT_TO_STDERR));//send asserts to stderr when debugging
-    
+   
     glfwInit();
     glfwWindowHint(GLFW_VISIBLE, false);
     glfwWindowHint(GLFW_RESIZABLE, false);
@@ -537,15 +558,15 @@ int wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, int n
     glfwSwapInterval(1); //Enable vsync
     io.IniFilename = NULL; //don't use imgui.ini file
     init_synth();
-
-	// Main loop
+    
+    // Main loop
 	while(!glfwWindowShouldClose(window)) {
 		glfwPollEvents();
 
 		if(predict_mode && need_prediction_update) {
 			make_scale_prediction();
 		}
-
+        
 		draw_one_frame(window);
 		
 		handle_input();
@@ -578,6 +599,8 @@ int wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, int n
         Text(buff);
         StringCchPrintf(buff, BUFF_SIZE,"preset num :%d", preset_num);
         Text(buff);
+        //StringCchPrintf(buff, BUFF_SIZE,"last opened file :%s", szFile);
+        //Text(buff);
         End();
         #endif
 
