@@ -6,12 +6,26 @@
 fluid_synth_t* synth;
 fluid_audio_driver_t* adriver;
 
+void load_soundfont() {
+    OPENFILENAME ofn = {};
+    ofn.lStructSize = sizeof(ofn);
+    ofn.lpstrFile = buff;
+    ofn.lpstrFile[0] = '\0';// Set lpstrFile[0] to '\0' so that the content isn't used 
+    ofn.nMaxFile = BUFF_SIZE;
+    ofn.lpstrFilter = "Soundfont 2\0*.SF2\0Soundfont 3\0*.SF3\0";
+    ofn.nFilterIndex = 1;
+    ofn.Flags = OFN_PATHMUSTEXIST | OFN_FILEMUSTEXIST;
+    if(GetOpenFileName(&ofn)) {
+        fluid_synth_sfload(synth, buff, 1);
+    }
+    reset();
+}
+
 void play_note(int r) {
     fluid_synth_noteon(synth, 0, HIGHEST_MIDI_NOTE-r, volume);
 }
 
 void stop_all_notes() {
-    //fluid_synth_all_sounds_off();
     fluid_synth_all_notes_off(synth, 0);
 }
 

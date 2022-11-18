@@ -7103,10 +7103,12 @@ bool ImGui::BeginMenuEx(const char* label, const char* icon, bool enabled)
 		PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(style.ItemSpacing.x * 2.0f, style.ItemSpacing.y));
 		float w = label_size.x;
 		ImVec2 text_pos(window->DC.CursorPos.x + offsets->OffsetLabel, window->DC.CursorPos.y + window->DC.CurrLineTextBaseOffset);
-		pressed = Selectable("", menu_is_open, selectable_flags, ImVec2(w, 0.0f));
+        window->DC.CursorPos.y -= IM_FLOOR(style.FramePadding.y);
+        pressed = Selectable("", menu_is_open, selectable_flags, ImVec2(w, window->MenuBarHeight()));
 		RenderText(text_pos, label);
 		PopStyleVar();
 		window->DC.CursorPos.x += IM_FLOOR(style.ItemSpacing.x * (-1.0f + 0.5f)); // -1 spacing to compensate the spacing added when Selectable() did a SameLine(). It would also work to call SameLine() ourselves after the PopStyleVar().
+        window->DC.CursorPos.y += IM_FLOOR(style.FramePadding.y);
 	}
 	else
 	{

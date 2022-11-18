@@ -21,31 +21,13 @@ inline ImVec2 operator+(const ImVec2& lhs, const ImVec2& rhs) {
 	return ImVec2(lhs.x + rhs.x, lhs.y + rhs.y); 
 }
 
-void load_soundfont() {
-    OPENFILENAME ofn = {};
-    ofn.lStructSize = sizeof(ofn);
-    ofn.lpstrFile = buff;
-    ofn.lpstrFile[0] = '\0';// Set lpstrFile[0] to '\0' so that the content isn't used 
-    ofn.nMaxFile = BUFF_SIZE;
-    ofn.lpstrFilter = "Soundfont\0*.SF2\0";
-    ofn.nFilterIndex = 1;
-    ofn.Flags = OFN_PATHMUSTEXIST | OFN_FILEMUSTEXIST;
-    
-    if(GetOpenFileName(&ofn)) {
-        fluid_synth_sfunload(synth, 1, 0);
-        fluid_synth_sfload(synth, buff, 1); //todo: does the last thing do anything   
-        //fluid_synth_sfreload(synth, 1);
-    }
-    
-}
-
 void draw_note(int r, int start, int end, ImDrawList* draw_list) {
 	const ImVec2 point1 = ImVec2(SIDE_BAR + start * CELL_SIZE_W, TOP_BAR + r     * CELL_SIZE_H);
 	const ImVec2 point2 = ImVec2(SIDE_BAR + end   * CELL_SIZE_W, TOP_BAR + (r+1) * CELL_SIZE_H);
 	const int nb = NOTE_BORDER_SIZE;
 
-	draw_list->AddRectFilled(point1 + ImVec2(-nb,-nb), point2 + ImVec2( nb, nb), NOTE_COL_2, 5);
-	draw_list->AddRectFilled(point1, point2, NOTE_BORDER_COL_2, 5);
+	draw_list->AddRectFilled(point1 + ImVec2(-nb,-nb), point2 + ImVec2( nb, nb), NOTE_COL, 5);
+	draw_list->AddRectFilled(point1, point2, NOTE_BORDER_COL, 5);
 	draw_list->AddRectFilled(point1 + ImVec2( nb, nb), point2 + ImVec2(-nb,-nb), NOTE_DARKER_COL, 5);
 }
 
@@ -91,9 +73,10 @@ inline Time pixels_to_time(int p) {
 	return (((double)p * 60.0) / (double) (bpm * CELL_SIZE_W * CELLS_PER_BEAT));
 }
 
-inline void reset() {
+inline void reset(){
     stop_all_notes();
 	elapsed = 0;
+    last = 0;
 	last_played_grid_col = -1;
 	max_r_cell = -1;
 }
@@ -106,8 +89,7 @@ inline void clear_selection() {
 
 void update_elapsed_time() {
 	Time loop_time, current = glfwGetTime();
-	static Time last;
-	if(playing)	 elapsed += current - last;
+	if(playing && last > 0)	 elapsed += current - last;//skip first frame after reset
 	last = current;
 
 	playhead_offset = time_to_pixels(elapsed);
@@ -119,10 +101,9 @@ void update_elapsed_time() {
 	else
 		loop_time = pixels_to_time(max_bar * CELL_SIZE_W);
 
-	// in the case of strong lag or erasing a note that shortens loop time
-
 	if(elapsed >= loop_time){
 		elapsed -= loop_time;
+        // in the case of strong lag or erasing a note that shortens loop time
 		if(elapsed > pixels_to_time(CELL_SIZE_W)/3)
 			elapsed = 0;
 	}
@@ -166,7 +147,6 @@ void make_scale_prediction() {
 	}
 	need_prediction_update = false;
 }
-
 
 void play_notes() {
 	const int current = (playhead_offset / CELL_SIZE_W) % CELL_GRID_NUM_W;
@@ -341,13 +321,16 @@ void draw_one_frame(GLFWwindow* window) {
             free_all_nodes();
             need_prediction_update = true;
         }
-
     }
+
 	{// TOP BAR
-		PushStyleColor(ImGuiCol_PopupBg, BLACK_COL);
-        PushStyleColor(ImGuiCol_MenuBarBg, BLACK_COL);
+        PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(-1, MENU_PADDING));
+
         PushStyleColor(ImGuiCol_Border, IM_COL32(80,80,86,128));
-		if(BeginMainMenuBar()) {
+        PushStyleColor(ImGuiCol_PopupBg, IM_COL32(36,36,36,255));
+		auto ret = BeginMainMenuBar();
+        PopStyleVar();
+        if(ret) {
 			if(BeginMenu("Settings")) {
 				if(MenuItem("Predict Mode", NULL, predict_mode)) {
 					predict_mode = !predict_mode;
@@ -401,7 +384,7 @@ void draw_one_frame(GLFWwindow* window) {
 			EndMainMenuBar();
 		}
         //PopStyleVar();
-		PopStyleColor(3);
+		PopStyleColor(2);
 
         SetCursorPos(ImVec2(BUFFER, MENU_BAR + BUFFER));
 		if(MyButton("Play"))  playing = true;
@@ -448,7 +431,7 @@ void draw_one_frame(GLFWwindow* window) {
         Text("Note Length:");
         SameLine();
 		SetNextItemWidth(BPM_BOX_WIDTH);
-		if(Combo("##e", &note_length_idx, "1\0001/2\0001/4\0001/8\0001/16\0\0")) {
+		if(Combo("##", &note_length_idx, "1\0001/2\0001/4\0001/8\0001/16\0\0")) {
 			grid_note_length = (CELLS_PER_BEAT*4) >> note_length_idx;
 		}
 	}
@@ -492,7 +475,7 @@ void draw_one_frame(GLFWwindow* window) {
 			const Note note = row_to_note(y);
 			const int octave = HIGHEST_OCTAVE - y/12;
 			const bool is_sharp = note == La_ || note == So_ || note == Fa_ || note == Re_ || note == Do_;
-			const ImU32 box_col = !is_sharp ? BLACK_NOTE_COL : WHITE_NOTE_COL;
+			const ImU32 box_col = is_sharp ? BLACK_NOTE_COL : WHITE_NOTE_COL;
 			StringCchPrintf(buff, BUFF_SIZE, "%s%d", note_names[note], octave);
 			TextBox(buff, ImVec2(SIDE_BAR, CELL_SIZE_H-2), ImVec2(0,0), box_col);
 		}
@@ -519,27 +502,38 @@ void draw_one_frame(GLFWwindow* window) {
 	is_grid_hovered = IsItemHovered();	
 	End();//main window
 }
+void window_content_scale_callback(GLFWwindow* window, float xscale, float yscale){
+    //SCALE = 16.0f * xscale;
+    glfwSetWindowSize(window, WINDOW_W, WINDOW_H);
+}
 
 int wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, int nCmdShow) {
-	assert(!_set_error_mode(_OUT_TO_STDERR));//send asserts to stderr when debugging
-   
+	assert(!_set_error_mode(_OUT_TO_STDERR));//send asserts to stderr
+    //SCALE *= 2;
     glfwInit();
     glfwWindowHint(GLFW_VISIBLE, false);
     glfwWindowHint(GLFW_RESIZABLE, false);
+    GLFWmonitor* primary = glfwGetPrimaryMonitor();
+
+    float xscale, yscale;
+    glfwGetMonitorContentScale(primary, &xscale, &yscale);
+    SCALE = 16.0f * xscale;
     GLFWwindow* window = glfwCreateWindow(WINDOW_W, WINDOW_H, "Sequencer", NULL, NULL);
-    
+    glfwSetWindowContentScaleCallback(window, window_content_scale_callback);
+
     CreateContext();
     glfwMakeContextCurrent(window);
     ImGui_ImplGlfw_InitForOpenGL(window, true);
-    ImGui_ImplOpenGL3_Init("#version 130"); 
+    ImGui_ImplOpenGL3_Init("#version 130");
+
 
     ImGuiIO& io = GetIO();
     io.Fonts->AddFontFromFileTTF("Lucida Console Regular.ttf", FONT_SIZE);
     ImGuiStyle& style = GetStyle();
     style.WindowBorderSize = 0;
     style.FrameRounding    = 3;
-    style.WindowPadding.x  = 4;
-    style.WindowPadding.y  = 4;
+    style.WindowPadding.x  = SCALE / 4;
+    style.WindowPadding.y  = SCALE / 4;
 
     draw_one_frame(window);
     Render();
@@ -575,7 +569,7 @@ int wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, int n
 
 		if(playing)  play_notes();
 		
-        #if 0
+        #if 1
 		// Debug window
 		ShowStyleEditor();
 		Begin("debug");
@@ -599,8 +593,8 @@ int wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, int n
         Text(buff);
         StringCchPrintf(buff, BUFF_SIZE,"preset num :%d", preset_num);
         Text(buff);
-        //StringCchPrintf(buff, BUFF_SIZE,"last opened file :%s", szFile);
-        //Text(buff);
+        StringCchPrintf(buff, BUFF_SIZE,"SCALE :%d", SCALE);
+        Text(buff);
         End();
         #endif
 
