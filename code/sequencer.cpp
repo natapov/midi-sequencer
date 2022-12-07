@@ -312,7 +312,7 @@ void draw_one_frame(GLFWwindow* window) {
         if(Button("Clear Scale Selection")) {
             clear_selection();
         }
-        SetCursorPos(ImVec2(WINDOW_W - SCALE * 9 , TOP_BAR + GRID_H + BUFFER));
+        SetCursorPos(ImVec2(WINDOW_W - SCALE * 16 * 9 , TOP_BAR + GRID_H + BUFFER));
         if(Button("Clear Notes")) {
             reset();
             playing = false;
@@ -405,7 +405,7 @@ void draw_one_frame(GLFWwindow* window) {
         SameLine();
 
         const char* instrument_preview_value = midi_instruments[instrument];
-        SetNextItemWidth(SCALE * 24);
+        SetNextItemWidth(SCALE * 16 * 24);
         if(BeginCombo("##no label", instrument_preview_value)) {
             for(int n = 0; n < 128; n++) {
                 if(Selectable(midi_instruments[n], instrument == n)) {
@@ -503,7 +503,7 @@ void draw_one_frame(GLFWwindow* window) {
 	End();//main window
 }
 void window_content_scale_callback(GLFWwindow* window, float xscale, float yscale){
-    //SCALE = 16.0f * xscale;
+    SCALE = xscale;
     glfwSetWindowSize(window, WINDOW_W, WINDOW_H);
 }
 
@@ -517,7 +517,7 @@ int wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, int n
 
     float xscale, yscale;
     glfwGetMonitorContentScale(primary, &xscale, &yscale);
-    SCALE = 16.0f * xscale;
+    SCALE = xscale;
     GLFWwindow* window = glfwCreateWindow(WINDOW_W, WINDOW_H, "Sequencer", NULL, NULL);
     glfwSetWindowContentScaleCallback(window, window_content_scale_callback);
 
@@ -532,8 +532,8 @@ int wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, int n
     ImGuiStyle& style = GetStyle();
     style.WindowBorderSize = 0;
     style.FrameRounding    = 3;
-    style.WindowPadding.x  = SCALE / 4;
-    style.WindowPadding.y  = SCALE / 4;
+    style.WindowPadding.x  = SCALE * 4;
+    style.WindowPadding.y  = SCALE * 4;
 
     draw_one_frame(window);
     Render();
@@ -581,7 +581,7 @@ int wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, int n
 		Text(buff);
 		StringCchPrintf(buff, BUFF_SIZE,"matching_scales_count: %d", number_of_matching_scales);
 		Text(buff);
-		StringCchPrintf(buff, BUFF_SIZE,"need preditdion update: %d", need_prediction_update);
+		StringCchPrintf(buff, BUFF_SIZE,"need prediction update: %d", need_prediction_update);
 		Text(buff);
 		StringCchPrintf(buff, BUFF_SIZE,"fps :%f", GetIO().Framerate);
 		Text(buff);

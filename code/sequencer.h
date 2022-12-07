@@ -26,28 +26,26 @@ const int MIN_NOTE_LEN = 2; // IN CELLS
 const int HIGHEST_MIDI_NOTE = 83; //SI5 
 
 
-int SCALE = 16;
-#define FONT_SIZE  ( SCALE * 1.25 )
-#define CELL_SIZE_W  ( SCALE / 4 )
-#define CELL_SIZE_H  ( SCALE * 1.2 )
-#define NOTE_BORDER_SIZE  ( SCALE / 16 )
-#define MENU_PADDING  ( SCALE / 3 )
-#define BUFFER    (  SCALE / 4 )
+int SCALE = 1;
+#define FONT_SIZE  ( SCALE * 20 )
+#define CELL_SIZE_W  ( SCALE * 4 )
+#define CELL_SIZE_H  ( SCALE * 20 )
+#define NOTE_BORDER_SIZE  ( SCALE  )
+#define MENU_PADDING  ( SCALE * 5 )
+#define BUFFER    (  SCALE * 5 )
 #define MENU_BAR  (  FONT_SIZE + MENU_PADDING * 2 )  // this is also the defualt button height 
 #define TOP_BAR   (  (MENU_BAR + BUFFER) * 2 )
 #define BOTTOM_BAR  ( MENU_BAR + BUFFER * 2 )
-#define SIDE_BAR  (  SCALE * 2.5 )
-#define GRID_W  ( CELL_SIZE_W * CELL_GRID_NUM_W + 1 )
+#define SIDE_BAR  (  SCALE * 40 )
+#define GRID_W  ( CELL_SIZE_W * CELL_GRID_NUM_W + SCALE )
 #define GRID_H  ( CELL_SIZE_H * CELL_GRID_NUM_H )
 #define WINDOW_W  ( GRID_W + SIDE_BAR )
 #define WINDOW_H  ( GRID_H + TOP_BAR + BOTTOM_BAR )
-#define LINE_W  ( SCALE / 16 ) //this is multiplied by two since a line seperates two cells symetricall 
+#define LINE_W  ( SCALE ) //this is multiplied by two since a line seperates two cells symetricall 
 #define RESIZE_HANDLE_SIZE  ( CELL_SIZE_W * 2 )
-#define BPM_BOX_WIDTH  ( SCALE * 6.5 )
-#define SCALE_BOX_WIDTH  ( SCALE * 18 )
-#define BASE_BOX_WIDTH ( SCALE * 5 )
-
-
+#define BPM_BOX_WIDTH  ( SCALE * 8 * 13 )
+#define SCALE_BOX_WIDTH  ( SCALE * 16 * 18 )
+#define BASE_BOX_WIDTH ( SCALE * 16 * 5 )
 
 
 // COLORS
