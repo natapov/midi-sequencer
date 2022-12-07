@@ -13,10 +13,16 @@
 #define GLFW_EXPOSE_NATIVE_WIN32
 #include "glfw/glfw3native.h"
 #include "commdlg.h"
-
 using namespace ImGui;
+ImFont* font[4];
 
 // FUNCTIONS
+
+void scale_application_ui(int new_scale){
+    SCALE = new_scale;
+    glfwSetWindowSize(window, WINDOW_W, WINDOW_H);
+}
+
 inline ImVec2 operator+(const ImVec2& lhs, const ImVec2& rhs) { 
 	return ImVec2(lhs.x + rhs.x, lhs.y + rhs.y); 
 }
@@ -218,7 +224,7 @@ void draw_one_frame(GLFWwindow* window) {
 	ImGui_ImplOpenGL3_NewFrame();
 	ImGui_ImplGlfw_NewFrame();
 	NewFrame();
-
+    PushFont(font[SCALE-1]);
     if(shortcut_window) {
         Begin("Keyboard Shortcuts", &shortcut_window, ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoResize);
         Text("Space - Play/Pause\nBackspace - Stop\nEnter - Play from start\nHold Shift - Toggle snap to grid\nMouse Wheel - Change note length");
@@ -364,11 +370,31 @@ void draw_one_frame(GLFWwindow* window) {
 				if(MenuItem("Auto loop", NULL, auto_loop)) {
 					auto_loop = !auto_loop;
 				}
+                if(BeginMenu("UI Scaling")) {
+                    if(MenuItem("x1", NULL, SCALE == 1)) {
+                        scale_application_ui(1);
+                    }
+                    if(MenuItem("x2", NULL, SCALE == 2)) {
+                        scale_application_ui(2);
+                    }
+                    if(MenuItem("x3", NULL, SCALE == 3)) {
+                        scale_application_ui(3);
+                    }
+                    if(MenuItem("x4", NULL, SCALE == 4)) {
+                        scale_application_ui(4);
+                    }
+                    ImGui::EndMenu();
+                }
 				ImGui::EndMenu();
 			}
 			if(BeginMenu("File")) {
 				if(MenuItem("Load Soundfont File")) {
                     load_soundfont();
+                }
+                if(MenuItem("Import Midi (todo)")) {
+                }
+                if(MenuItem("Export Midi (todo)")) {
+
                 }
 				ImGui::EndMenu();
 			}
@@ -499,12 +525,10 @@ void draw_one_frame(GLFWwindow* window) {
 	//we use a invisible button to tell us when to capture mouse input for the grid
 	SetCursorPos(ImVec2(SIDE_BAR,TOP_BAR));
 	InvisibleButton("grid_overlay", ImVec2(GRID_W, GRID_H), 0);
-	is_grid_hovered = IsItemHovered();	
+	is_grid_hovered = IsItemHovered();
+    PopFont();
+
 	End();//main window
-}
-void window_content_scale_callback(GLFWwindow* window, float xscale, float yscale){
-    SCALE = xscale;
-    glfwSetWindowSize(window, WINDOW_W, WINDOW_H);
 }
 
 int wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, int nCmdShow) {
@@ -518,8 +542,8 @@ int wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, int n
     float xscale, yscale;
     glfwGetMonitorContentScale(primary, &xscale, &yscale);
     SCALE = xscale;
-    GLFWwindow* window = glfwCreateWindow(WINDOW_W, WINDOW_H, "Sequencer", NULL, NULL);
-    glfwSetWindowContentScaleCallback(window, window_content_scale_callback);
+    window = glfwCreateWindow(WINDOW_W, WINDOW_H, "Sequencer", NULL, NULL);
+    //glfwSetWindowContentScaleCallback(window, window_content_scale_callback);
 
     CreateContext();
     glfwMakeContextCurrent(window);
@@ -528,8 +552,14 @@ int wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, int n
 
 
     ImGuiIO& io = GetIO();
-    io.Fonts->AddFontFromFileTTF("Lucida Console Regular.ttf", FONT_SIZE);
+    font[0] = io.Fonts->AddFontFromFileTTF("Lucida Console Regular.ttf", FONT_SIZE);
+    font[1] = io.Fonts->AddFontFromFileTTF("Lucida Console Regular.ttf", FONT_SIZE * 2);
+    font[2] = io.Fonts->AddFontFromFileTTF("Lucida Console Regular.ttf", FONT_SIZE * 3);
+    font[3] = io.Fonts->AddFontFromFileTTF("Lucida Console Regular.ttf", FONT_SIZE * 4);
+
+    //io.Fonts->Build();
     ImGuiStyle& style = GetStyle();
+    
     style.WindowBorderSize = 0;
     style.FrameRounding    = 3;
     style.WindowPadding.x  = SCALE * 4;
@@ -560,7 +590,6 @@ int wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, int n
 		if(predict_mode && need_prediction_update) {
 			make_scale_prediction();
 		}
-        
 		draw_one_frame(window);
 		
 		handle_input();
@@ -569,7 +598,7 @@ int wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, int n
 
 		if(playing)  play_notes();
 		
-        #if 1
+        #if 0
 		// Debug window
 		ShowStyleEditor();
 		Begin("debug");
@@ -597,6 +626,7 @@ int wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, int n
         Text(buff);
         End();
         #endif
+
 
         Render();
 		ImGui_ImplOpenGL3_RenderDrawData(GetDrawData());

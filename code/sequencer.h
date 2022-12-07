@@ -108,10 +108,12 @@ int instrument       = 0;
 int note_length_idx  = 2;
 int beats_per_bar    = 4; // the time signiture of the music
 int grid_note_length = 8; // the size of notes the user is currently drawing, in cells
+int user_selected_scaling = 0;
 bool predict_mode    = true;
 bool auto_loop       = true;
 bool shortcut_window = false;
 bool playing         = false;
+
 
 bool snap_to_grid_setting = true;
 bool toggle_snap_to_grid  = false;;
@@ -119,6 +121,8 @@ bool toggle_snap_to_grid  = false;;
 //selector variables
 Note selected_base_note = -1; 
 int selected_scale_idx  = -1;
+
+GLFWwindow* window = NULL;
 
 // headers 
 inline int row_to_note(int n);
