@@ -7,7 +7,7 @@ fluid_synth_t* synth;
 fluid_audio_driver_t* adriver;
 
 void load_soundfont() {
-    OPENFILENAME ofn = {};
+    OPENFILENAME ofn = { 0 };
     ofn.lStructSize = sizeof(ofn);
     ofn.lpstrFile = buff;
     ofn.lpstrFile[0] = '\0';// Set lpstrFile[0] to '\0' so that the content isn't used 

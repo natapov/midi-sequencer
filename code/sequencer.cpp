@@ -5,6 +5,7 @@
 #include "imgui_impl_opengl3.h"
 #include "strsafe.h"
 #include "glfw/glfw3.h"
+#include "midi-parser.h"
 #include "scales.h"
 #include "grid.h"
 #include "audio.h"
@@ -13,6 +14,7 @@
 #define GLFW_EXPOSE_NATIVE_WIN32
 #include "glfw/glfw3native.h"
 #include "commdlg.h"
+
 using namespace ImGui;
 ImFont* font[4];
 
@@ -220,6 +222,48 @@ inline void handle_input() {
 	snap_to_grid = toggle_snap_to_grid ? !snap_to_grid_setting : snap_to_grid_setting;
 }
 
+void import_midi() {
+    OPENFILENAME ofn = {};
+    ofn.lStructSize = sizeof(ofn);
+    ofn.lpstrFile = buff;
+    ofn.lpstrFile[0] = '\0'; // Set lpstrFile[0] to '\0' so that the content isn't used 
+    ofn.nMaxFile = BUFF_SIZE;
+    ofn.lpstrFilter = "MIDI\0*.mid\0";
+    ofn.nFilterIndex = 1;
+    ofn.Flags = OFN_PATHMUSTEXIST | OFN_FILEMUSTEXIST;
+    if(!GetOpenFileName(&ofn)) {
+        return;
+    }
+
+    HANDLE midiFile = CreateFile(buff, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, 0, NULL);
+    assert(midiFile != INVALID_HANDLE_VALUE);
+
+    auto ret = SetFilePointer(midiFile, 0, NULL, FILE_BEGIN);
+    assert(ret != INVALID_SET_FILE_POINTER);
+
+    DWORD chunkType;
+    DWORD header_size; //file size perhaps?s
+    WORD format_type;
+    WORD number_of_tracks;
+    WORD time_division;
+    DWORD bytesRead;
+
+    ReadFile(midiFile, &chunkType, sizeof(DWORD), &bytesRead, NULL);
+
+    assert(chunkType == 'dhTM');
+
+    ReadFile(midiFile, &header_size, sizeof(DWORD), &bytesRead, NULL); // Data size (for all subchunks)
+    ReadFile(midiFile, &format_type, sizeof(WORD), &bytesRead, NULL);  // WAVE format
+
+    ReadFile(midiFile, &number_of_tracks, sizeof(DWORD), &bytesRead, NULL);     // First subchunk (should be 'fmt')
+    ReadFile(midiFile, &time_division   , sizeof(DWORD), &bytesRead, NULL);     // First subchunk (should be 'fmt')
+
+    assert(chunkType == ' tmf');
+
+
+    CloseHandle(midiFile);
+}
+
 void draw_one_frame(GLFWwindow* window) {
 	ImGui_ImplOpenGL3_NewFrame();
 	ImGui_ImplGlfw_NewFrame();
@@ -391,7 +435,8 @@ void draw_one_frame(GLFWwindow* window) {
 				if(MenuItem("Load Soundfont File")) {
                     load_soundfont();
                 }
-                if(MenuItem("Import Midi (todo)")) {
+                if(MenuItem("Import Midi")) {
+                    import_midi();
                 }
                 if(MenuItem("Export Midi (todo)")) {
 
@@ -641,3 +686,7 @@ int wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, int n
 	glfwTerminate();
 	return 1;
 }
+
+
+
+
