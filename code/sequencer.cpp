@@ -407,7 +407,6 @@ void draw_one_frame(GLFWwindow* window) {
 			}
 			EndMainMenuBar();
 		}
-        //PopStyleVar();
 		PopStyleColor(2);
 
         SetCursorPos(ImVec2(BUFFER, MENU_BAR + BUFFER));
@@ -529,8 +528,11 @@ void draw_one_frame(GLFWwindow* window) {
 	End();//main window
 }
 
-int wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, int nCmdShow) {
-	assert(!_set_error_mode(_OUT_TO_STDERR));//send asserts to stderr
+void setup() {
+    // this function is way more complicted than srictly neccesary because 1) it draws the first frame outside the main loop to make startup feel faster and 
+    // 2) it calls winAPI functions to make the windows titlebar black
+
+    assert(!_set_error_mode(_OUT_TO_STDERR));//send asserts to stderr instead of popping open a dialog box
     
     glfwInit();
     glfwWindowHint(GLFW_VISIBLE, false);
@@ -542,7 +544,6 @@ int wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, int n
     glfwMakeContextCurrent(window);
     ImGui_ImplGlfw_InitForOpenGL(window, true);
     ImGui_ImplOpenGL3_Init("#version 130");
-
 
     ImGuiIO& io = GetIO();
     font[0] = io.Fonts->AddFontFromFileTTF("Lucida Console Regular.ttf", FONT_SIZE);
@@ -571,6 +572,19 @@ int wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, int n
     glfwSwapInterval(1); //Enable vsync
     io.IniFilename = NULL; //don't use imgui.ini file
     init_synth();
+}
+void cleanup() {
+    delete_synth();
+    ImGui_ImplOpenGL3_Shutdown();
+    ImGui_ImplGlfw_Shutdown();
+    DestroyContext();
+    glfwDestroyWindow(window);
+    glfwTerminate();
+}
+
+int wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, int nCmdShow) {
+    
+    setup();
     
     // Main loop
 	while(!glfwWindowShouldClose(window)) {
@@ -579,12 +593,10 @@ int wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, int n
 		if(predict_mode && need_prediction_update) {
 			make_scale_prediction();
 		}
-		draw_one_frame(window);
-		
-		handle_input();
-		
-		update_elapsed_time();
 
+		draw_one_frame(window);
+		handle_input();
+		update_elapsed_time();
 		if(playing)  play_notes();
 		
         #if 0
@@ -616,19 +628,13 @@ int wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, int n
         End();
         #endif
 
-
         Render();
 		ImGui_ImplOpenGL3_RenderDrawData(GetDrawData());
 		glfwSwapBuffers(window);
 	}
-	// Cleanup
-    delete_synth();
-	ImGui_ImplOpenGL3_Shutdown();
-	ImGui_ImplGlfw_Shutdown();
-	DestroyContext();
-	glfwDestroyWindow(window);
-	glfwTerminate();
-	return 1;
+
+    cleanup();
+	return 0;
 }
 
 
