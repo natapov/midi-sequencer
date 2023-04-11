@@ -124,7 +124,31 @@ int selected_scale_idx  = -1;
 
 GLFWwindow* window = NULL;
 
-// headers 
+// Function Declarations
 inline int row_to_note(int n);
 inline void reset();
+void scale_application_ui(int new_scale);
+inline ImVec2 operator+(const ImVec2& lhs, const ImVec2& rhs);
+void draw_note(int r, int start, int end, ImDrawList* draw_list);
+inline bool scale_has_note(short scale, Note note);
+inline bool scale_contains(short container, short contained);
+short scale_rotate_left_by_one(short s);
+short notes_array_to_scale(int arr[12]);
+inline ImVec4 lerp(ImVec4 a, ImVec4 b, float t);
+inline int row_to_note(int n);
+inline int time_to_pixels(Time t);
+inline Time pixels_to_time(int p);
+inline void reset();
+inline void clear_selection();
+void update_elapsed_time();
+void select_scale(int n);
+void make_scale_prediction();
+void play_notes();
+inline void update_note_legth();
+inline void handle_input();
+void setup();
+void cleanup();
+int wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, int nCmdShow);
+void draw_one_frame(GLFWwindow* window);
+
 #endif

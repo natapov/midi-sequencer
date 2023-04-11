@@ -9,12 +9,31 @@ typedef struct Node{
 	struct Node* next;
 }Node;
 
-Node* moving_node_prev    = NULL;
-Node* resizing_node_start = NULL;
-Node* resizing_node_end   = NULL;
+typedef enum {
+    state_default,
+    state_moving,
+    state_resizing_start,
+    state_resizing_end,
+    state_hovering,
+}State;
+
+typedef enum {
+    hovering_start,
+    hovering_end,
+    hovering_center,
+}Hovering_substate;
+
+
+
+State             current_state  = state_default;
+Hovering_substate hovering_state = hovering_center;
+
+Node* previous_node         = NULL; // the node previous to the node currently being changed
+
 int moving_node_offset    = -1;
 int moving_node_row       = -1;
 int moving_node_len       = -1;
+
 
 Node row[CELL_GRID_NUM_H] = {-1, -1, NULL};
 
@@ -92,11 +111,14 @@ bool try_place_note(int r, int start, int end, Node* cur) {
 }
 	
 bool try_move_note(int r, int c) {
-	Node* moving_node = moving_node_prev->next;	
+    assert(current_state == state_moving);
+    assert(previous_node != NULL);
+
+	Node* moving_node = previous_node->next;	
 	c = snap_to_grid ? snap(c) : c - moving_node_offset;
 	if(c == moving_node->start && r == moving_node_row)  return false;
     if(c + moving_node_len > CELL_GRID_NUM_W)  return false;
-	moving_node_prev->next = moving_node->next;
+	previous_node->next = moving_node->next;
 	
 	Node* cur = get_last_node_that_starts_before_c(r, c);
 	
@@ -109,30 +131,29 @@ bool try_move_note(int r, int c) {
         moving_node->next = cur->next;
 		moving_node->start = c;
 		moving_node->end   = c + moving_node_len;
-		moving_node_prev = cur;
+		previous_node = cur;
 		drawn_notes[row_to_note(moving_node_row)] -= 1;
 		moving_node_row = r;
 		drawn_notes[row_to_note(r)] += 1;
 		cur->next = moving_node;
 
-
-
 		return true;
 	}
-	assert(moving_node->next == moving_node_prev->next);
-	moving_node_prev->next = moving_node;
+	assert(moving_node->next == previous_node->next);
+	previous_node->next = moving_node;
 	return false;
 }
 
 inline void start_moving_note(int r, int c, Node* prev) {
-	moving_node_prev = prev;
+	current_state = state_moving;
+    previous_node = prev;
 	moving_node_offset = c - prev->next->start;
 	moving_node_len = get_len(prev->next);
 	moving_node_row = r;
 }
 
 void resize_start(int c) {
-	Node* prev = resizing_node_start;
+	Node* prev = previous_node;
 	Node* node = prev->next;
 
 	const int last_c = node->start;
@@ -144,7 +165,7 @@ void resize_start(int c) {
 	}
 }
 void resize_end(int c) {
-	Node* node = resizing_node_end;
+	Node* node = previous_node->next;
 	Node* next = node->next;
 	const int last_end = node->end;
 	c = snap_to_grid ? snap(c) + grid_note_length : c + 1;
@@ -155,6 +176,8 @@ void resize_end(int c) {
 	}		
 }
 
+
+
 bool try_update_grid() {	
 	//get grid co-ordinates
 	ImVec2 mouse_pos = GetMousePos();
@@ -162,26 +185,35 @@ bool try_update_grid() {
 	int c = (mouse_pos.x - SIDE_BAR) / CELL_SIZE_W;
 	int snap_c;
 
-	bool is_hovering_note  = false;
-	bool is_hovering_start = false;
-	bool is_hovering_end   = false;
-
 	Node* prev;
 	Node* node = get_last_node_that_starts_before_c(r, c, prev);
 	Node* node_s;
-	if(node->end > c){
-		is_hovering_note = true;
+	if(current_state == state_default && c < node->end){
+		current_state = state_hovering;
 		const int node_start_pixels = node->start * CELL_SIZE_W + SIDE_BAR;
 		const int node_end_pixels   = node->end   * CELL_SIZE_W + SIDE_BAR;
 		const int max_size = (CELL_SIZE_W/3) * get_len(node);
 		const int handle_size = RESIZE_HANDLE_SIZE < max_size ? RESIZE_HANDLE_SIZE : max_size;
-		if(mouse_pos.x - node_start_pixels <= handle_size) {
-			is_hovering_start = true;
+		
+        if(mouse_pos.x - node_start_pixels <= handle_size) {
+            hovering_state = hovering_start;
 		}
 		else if(node_end_pixels - mouse_pos.x <= handle_size) {
-			is_hovering_end = true;
+            hovering_state = hovering_end;
 		}
+        else {
+            hovering_state = hovering_center;
+        }
 	}
+    if(current_state == state_resizing_end || current_state == state_resizing_start) {
+        SetMouseCursor(ImGuiMouseCursor_ResizeEW);
+    }
+    if(current_state == state_hovering) {
+        if(hovering_state != hovering_center) {
+            SetMouseCursor(ImGuiMouseCursor_ResizeEW);
+        }
+    }
+
 	if(snap_to_grid) {
 		snap_c = snap(c);
 		node_s = get_last_node_that_starts_before_c(r, snap_c);
@@ -190,21 +222,27 @@ bool try_update_grid() {
 		snap_c = c;
 		node_s = node;
 	}
+
+    if(IsMouseDown(1)) {
+        if(current_state == state_hovering || current_state == state_moving) 
+          erase_note(r, c, node, prev);
+        current_state = state_default;
+        previous_node = NULL;
+        return true;
+    }
+
 	if(!IsMouseDown(0)) {
-		resizing_node_start = NULL;
-		resizing_node_end   = NULL;
-		moving_node_prev    = NULL;
+        if(!playing) {
+            stop_all_notes();
+        }
+		previous_node = NULL;
+        current_state = state_default;
+        return false;
 	}
-	if(resizing_node_end || resizing_node_start || is_hovering_end || is_hovering_start) {
-		if(!moving_node_prev)
-			SetMouseCursor(ImGuiMouseCursor_ResizeEW);
-	}
-	if(is_hovering_note && IsMouseDown(1)) {
-		erase_note(r, c, node, prev);
-		return true;
-	}
+
+
 	if(IsMouseClicked(0)) {
-		if(!is_hovering_note) {
+		if(current_state == state_default) {
 			if(try_place_note(r, snap_c, snap_c + grid_note_length, node_s)) {
 				if(!playing)  play_note(r);
 				start_moving_note(r, c, node_s);
@@ -212,32 +250,34 @@ bool try_update_grid() {
 			}
 			else return false;
 		}
-		if(is_hovering_start) {
-			resizing_node_start = prev;
-			return false;
-		}
-		if(is_hovering_end) {
-			resizing_node_end = node;
-			return false;
-		}
+        if(current_state == state_hovering) {
+        	if(hovering_state == hovering_start) {
+        		previous_node = prev;
+                current_state = state_resizing_start;
+        		return false;
+        	}
+        	if(hovering_state == hovering_end) {
+                previous_node = prev;
+                current_state = state_resizing_end;
+        		return false;
+        	}
+        }
 	}
-    if(!IsMouseDown(0) && !playing) {
-        stop_all_notes();
-    }
-	if(resizing_node_start) {
+	if(current_state == state_resizing_start) {
 		resize_start(c);
 		return false;
 	}
-	if(resizing_node_end) {
+	if(current_state == state_resizing_end) {
 		resize_end(c);
 		return false;
-	}	
-	if(moving_node_prev) {
+	}
+	if(current_state == state_moving) {
 		return try_move_note(r, c);
 	}
-	else if(is_hovering_note && IsMouseDown(0)){
-		start_moving_note(r, c, prev);
-		return false;
-	}
+    if(current_state == state_hovering && hovering_state == hovering_center) {
+        start_moving_note(r, c, prev);
+        return false;
+    }
+
 	return false;
 }
