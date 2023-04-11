@@ -22,38 +22,33 @@ typedef enum {
     hovering_start,
     hovering_end,
     hovering_center,
-}Hovering_substate;
+}Hovering_state;
 
+State current_state = state_default;
+Hovering_state hovering_state = hovering_center;
 
+Node* previous_node    = NULL; // the node previous to the node currently being changed
+int moving_node_offset = -1;
+int moving_node_row    = -1;
+int moving_node_len    = -1;
 
-State             current_state  = state_default;
-Hovering_substate hovering_state = hovering_center;
+Node row_array[CELL_GRID_NUM_H] = {-1, -1, NULL};
 
-Node* previous_node         = NULL; // the node previous to the node currently being changed
-
-int moving_node_offset    = -1;
-int moving_node_row       = -1;
-int moving_node_len       = -1;
-
-
-Node row[CELL_GRID_NUM_H] = {-1, -1, NULL};
-
-Node* temp;
 void free_all_nodes() {
+    Node* temp;
 	for(int i = 0; i < CELL_GRID_NUM_H; i++) {
-		for(Node* n = row[i].next; n != NULL;) {
+		for(Node* n = row_array[i].next; n != NULL;) {
 			temp = n->next;
 			free(n);
 			n = temp;
 		}
-		row[i].next = NULL;
+		row_array[i].next = NULL;
 	}
 }
 
 inline int get_len(Node* n) {
 	return n->end - n->start;
 }
-
 
 Node* init_node(int start, int end, Node* next = NULL) {
 	Node* ret = (Node*) malloc(sizeof(Node));
@@ -80,7 +75,7 @@ inline int snap(int x) {
 Node* get_last_node_that_starts_before_c(int r, int c, Node*& last) { 
 	last = NULL;
 	Node* ret;
-	for(ret = &row[r];; ret = ret->next) {
+	for(ret = &row_array[r];; ret = ret->next) {
 		if(ret->next == NULL)  break;
 		if(ret->next->start > c) break;
 		last = ret;
@@ -89,7 +84,7 @@ Node* get_last_node_that_starts_before_c(int r, int c, Node*& last) {
 }
 Node* get_last_node_that_starts_before_c(int r, int c) { 
 	Node* ret;
-	for(ret = &row[r];; ret = ret->next) {
+	for(ret = &row_array[r];; ret = ret->next) {
 		if(ret->next == NULL)  break;
 		if(ret->next->start > c) break;
 	}
@@ -129,7 +124,7 @@ bool try_move_note(int r, int c) {
             play_note(r);
         }
 
-        moving_node->next = cur->next;
+        moving_node->next  = cur->next;
 		moving_node->start = c;
 		moving_node->end   = c + moving_node_len;
 		previous_node = cur;
@@ -221,7 +216,6 @@ bool try_update_grid() {
             }
         }
     }
-
 
     switch(current_state) {
     case state_default:
