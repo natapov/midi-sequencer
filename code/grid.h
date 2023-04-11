@@ -11,6 +11,7 @@ typedef struct Node{
 
 typedef enum {
     state_default,
+    state_erasing,
     state_moving,
     state_resizing_start,
     state_resizing_end,
@@ -177,42 +178,16 @@ void resize_end(int c) {
 }
 
 
-
 bool try_update_grid() {	
-	//get grid co-ordinates
-	ImVec2 mouse_pos = GetMousePos();
+    //get grid co-ordinates
+	ImVec2 mouse_pos = GetMousePos();  
 	int r = (mouse_pos.y - TOP_BAR)  / CELL_SIZE_H;
 	int c = (mouse_pos.x - SIDE_BAR) / CELL_SIZE_W;
-	int snap_c;
 
+	int snap_c;
 	Node* prev;
 	Node* node = get_last_node_that_starts_before_c(r, c, prev);
 	Node* node_s;
-	if(current_state == state_default && c < node->end){
-		current_state = state_hovering;
-		const int node_start_pixels = node->start * CELL_SIZE_W + SIDE_BAR;
-		const int node_end_pixels   = node->end   * CELL_SIZE_W + SIDE_BAR;
-		const int max_size = (CELL_SIZE_W/3) * get_len(node);
-		const int handle_size = RESIZE_HANDLE_SIZE < max_size ? RESIZE_HANDLE_SIZE : max_size;
-		
-        if(mouse_pos.x - node_start_pixels <= handle_size) {
-            hovering_state = hovering_start;
-		}
-		else if(node_end_pixels - mouse_pos.x <= handle_size) {
-            hovering_state = hovering_end;
-		}
-        else {
-            hovering_state = hovering_center;
-        }
-	}
-    if(current_state == state_resizing_end || current_state == state_resizing_start) {
-        SetMouseCursor(ImGuiMouseCursor_ResizeEW);
-    }
-    if(current_state == state_hovering) {
-        if(hovering_state != hovering_center) {
-            SetMouseCursor(ImGuiMouseCursor_ResizeEW);
-        }
-    }
 
 	if(snap_to_grid) {
 		snap_c = snap(c);
@@ -223,61 +198,79 @@ bool try_update_grid() {
 		node_s = node;
 	}
 
-    if(IsMouseDown(1)) {
-        if(current_state == state_hovering || current_state == state_moving) 
-          erase_note(r, c, node, prev);
+    if(!IsMouseDown(0)) {
         current_state = state_default;
-        previous_node = NULL;
-        return true;
     }
 
-	if(!IsMouseDown(0)) {
+    if(current_state == state_hovering || current_state == state_default) {
+        if(c < node->end){
+            current_state = state_hovering;
+            const int node_start_pixels = node->start * CELL_SIZE_W + SIDE_BAR;
+            const int node_end_pixels   = node->end   * CELL_SIZE_W + SIDE_BAR;
+            const int max_size = (CELL_SIZE_W/3) * get_len(node);
+            const int handle_size = RESIZE_HANDLE_SIZE < max_size ? RESIZE_HANDLE_SIZE : max_size;
+            
+            if(mouse_pos.x - node_start_pixels <= handle_size) {
+                hovering_state = hovering_start;
+            }
+            else if(node_end_pixels - mouse_pos.x <= handle_size) {
+                hovering_state = hovering_end;
+            }
+            else {
+                hovering_state = hovering_center;
+            }
+        }
+    }
+
+
+    switch(current_state) {
+    case state_default:
         if(!playing) {
             stop_all_notes();
         }
-		previous_node = NULL;
-        current_state = state_default;
-        return false;
-	}
-
-
-	if(IsMouseClicked(0)) {
-		if(current_state == state_default) {
-			if(try_place_note(r, snap_c, snap_c + grid_note_length, node_s)) {
-				if(!playing)  play_note(r);
-				start_moving_note(r, c, node_s);
-				return true;
-			}
-			else return false;
-		}
-        if(current_state == state_hovering) {
-        	if(hovering_state == hovering_start) {
-        		previous_node = prev;
-                current_state = state_resizing_start;
-        		return false;
-        	}
-        	if(hovering_state == hovering_end) {
-                previous_node = prev;
-                current_state = state_resizing_end;
-        		return false;
-        	}
+        if(IsMouseClicked(0)){
+            if(try_place_note(r, snap_c, snap_c + grid_note_length, node_s)) {
+                if(!playing)  play_note(r);
+                start_moving_note(r, c, node_s);
+                return true;
+            }
         }
-	}
-	if(current_state == state_resizing_start) {
-		resize_start(c);
-		return false;
-	}
-	if(current_state == state_resizing_end) {
-		resize_end(c);
-		return false;
-	}
-	if(current_state == state_moving) {
-		return try_move_note(r, c);
-	}
-    if(current_state == state_hovering && hovering_state == hovering_center) {
-        start_moving_note(r, c, prev);
         return false;
+    case state_resizing_start:
+        SetMouseCursor(ImGuiMouseCursor_ResizeEW);
+        resize_start(c);
+        return false;
+    case state_resizing_end:
+        SetMouseCursor(ImGuiMouseCursor_ResizeEW);
+        resize_end(c);
+        return false;
+    case state_moving:
+        return try_move_note(r, c);
+    case state_hovering:
+        if(IsMouseDown(1)) {
+            erase_note(r, c, node, prev);
+            current_state = state_default;
+            return true;
+        }
+        switch(hovering_state) {
+        case hovering_center:
+            start_moving_note(r, c, prev);
+            return false;
+        case hovering_start:
+            SetMouseCursor(ImGuiMouseCursor_ResizeEW);
+            if(IsMouseClicked(0)) {
+                previous_node = prev;
+                current_state = state_resizing_start;
+            }
+            return false;
+        case hovering_end:
+            SetMouseCursor(ImGuiMouseCursor_ResizeEW);
+            if(IsMouseClicked(0)) {
+                previous_node = prev;
+                current_state = state_resizing_end; 
+            }
+            return false;
+        }
     }
-
 	return false;
 }
