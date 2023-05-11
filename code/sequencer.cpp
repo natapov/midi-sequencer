@@ -58,6 +58,7 @@ void draw_one_frame(GLFWwindow* window) {
     ImGui_ImplOpenGL3_NewFrame();
     ImGui_ImplGlfw_NewFrame();
     NewFrame();
+    PushFont(font[SCALE-1]);
     if(shortcut_window) {
         Begin("Keyboard Shortcuts", &shortcut_window, ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoResize);
         Text("Space - Play/Pause\nBackspace - Stop\nEnter - Play from start\nHold Shift - Toggle snap to grid\nMouse Wheel - Change note length");
@@ -338,7 +339,7 @@ void draw_one_frame(GLFWwindow* window) {
     }
     max_r_cell = -1;
     for(int i = 0; i < CELL_GRID_NUM_H; i++) { 
-        for(Node* cur_c = row[i].next; cur_c != NULL; cur_c = cur_c->next) {
+        for(Node* cur_c = row_array[i].next; cur_c != NULL; cur_c = cur_c->next) {
             draw_note(i, cur_c->start, cur_c->end, draw_list);
             if(max_r_cell < cur_c->end)
                 max_r_cell = cur_c->end;
@@ -353,6 +354,7 @@ void draw_one_frame(GLFWwindow* window) {
     SetCursorPos(ImVec2(SIDE_BAR,TOP_BAR));
     InvisibleButton("grid_overlay", ImVec2(GRID_W, GRID_H), 0);
     is_grid_hovered = IsItemHovered();
+    PopFont();
     End();//main window
 }
 
@@ -497,7 +499,7 @@ void select_scale(int n) {
 void play_notes() {
 	const int current_col = (playhead_offset / CELL_SIZE_W) % CELL_GRID_NUM_W;
 	for(int i = 0; i < CELL_GRID_NUM_H; i++){
-		for(Node* n = row[i].next; n != NULL; n = n->next) {
+		for(Node* n = row_array[i].next; n != NULL; n = n->next) {
 			if(last_played_grid_col <= current_col) {
 				if(n->start > last_played_grid_col && n->start <= current_col) {
 					play_note(i);
@@ -571,6 +573,12 @@ void setup() {
     ImGui_ImplGlfw_InitForOpenGL(window, true);
     ImGui_ImplOpenGL3_Init("#version 130");
     ImGuiIO& io = GetIO();
+    
+    
+    font[0] = io.Fonts->AddFontFromFileTTF("Lucida Console Regular.ttf", FONT_SIZE);
+    font[1] = io.Fonts->AddFontFromFileTTF("Lucida Console Regular.ttf", FONT_SIZE * 2);
+    font[2] = io.Fonts->AddFontFromFileTTF("Lucida Console Regular.ttf", FONT_SIZE * 3);
+    font[3] = io.Fonts->AddFontFromFileTTF("Lucida Console Regular.ttf", FONT_SIZE * 4);
     
     io.Fonts->AddFontFromFileTTF("Lucida Console Regular.ttf", FONT_SIZE);
     ImGuiStyle& style = GetStyle();
