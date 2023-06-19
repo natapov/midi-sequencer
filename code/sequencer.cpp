@@ -25,31 +25,24 @@ int wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, int n
     while(!glfwWindowShouldClose(window)) {
         glfwPollEvents();
 
-        if(predict_mode && need_prediction_update) {
+        if(predict_mode && need_prediction_update)
             make_scale_prediction();
-        }
 
         draw_one_frame(window);
+        
         handle_input();
+        
         update_elapsed_time();
+        
         if(playing)  play_notes();
         
-        #if 0
-        // Debug window
-        ShowStyleEditor();
-        Begin("debug");
-        StringCchPrintf(buff, BUFF_SIZE,"Notes: %d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d", drawn_notes[11], drawn_notes[10], drawn_notes[9], drawn_notes[8], drawn_notes[7], drawn_notes[6], drawn_notes[5], drawn_notes[4], drawn_notes[3], drawn_notes[2], drawn_notes[1], drawn_notes[0]);
-        Text(buff);
-        StringCchPrintf(buff, BUFF_SIZE,"Note histogram: %d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d", note_histogram[11], note_histogram[10], note_histogram[9], note_histogram[8], note_histogram[7], note_histogram[6], note_histogram[5], note_histogram[4], note_histogram[3], note_histogram[2], note_histogram[1], note_histogram[0]);
-        Text(buff);
-        End();
-        #endif
-
         Render();
         ImGui_ImplOpenGL3_RenderDrawData(GetDrawData());
         glfwSwapBuffers(window);
     }
 
+
+    
     cleanup();
     return 0;
 }

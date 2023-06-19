@@ -248,6 +248,7 @@ bool try_update_grid() {
         }
         switch(hovering_state) {
         case hovering_center:
+            SetMouseCursor(ImGuiMouseCursor_ResizeAll);
             start_moving_note(r, c, prev);
             return false;
         case hovering_start:
